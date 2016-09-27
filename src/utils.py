@@ -135,7 +135,7 @@ def sms_generator(root_fol, subjects=()):
     if len(subjects) == 0:
         subjects = glob.glob(op.join(root_fol, 'nmr*'))
     for subject_fol in subjects:
-        smss = glob.glob(op.join(subject_fol, '3mm_SMS*'))
+        smss = sorted(glob.glob(op.join(subject_fol, '3mm_SMS*')))
         # smss = ['3mm_SMS1_pa', '3mm_SMS4_ipat1_pa', '3mm_SMS4_ipat2_pa', '3mm_SMS8_pa']
         for sms_fol in smss:
             runs = glob.glob(op.join(op.join(sms_fol, '*')))
