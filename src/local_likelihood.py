@@ -150,7 +150,10 @@ def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', o
             print('The parameter hs_tr is not the same as in the saved file, recalculating.')
     W = len(hs_s)
     if not op.isfile(output_fname) or overwrite:
-        all_means, all_vars = np.zeros((ys.shape[0], W)), np.zeros((ys.shape[0], W))
+        # all_means, all_vars = np.zeros((ys.shape[0], W)), np.zeros((ys.shape[0], W))
+        all_means = np.zeros((len(hs_tr), len(names), ys.shape[1]))
+        all_vars = np.zeros((len(hs_tr), len(names), ys.shape[1]))
+
         h_chunks = utils.chunks(list(zip(hs_tr, hs_s, range(W))), W / n_jobs)
         params = [(ys, names, h_chunk, t_axis, fol, k_type) for h_chunk in h_chunks]
         results = utils.run_parallel(_est_mean_and_var_parallel, params, n_jobs)
@@ -160,8 +163,8 @@ def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', o
         #         all_vars[h_ind] = var
         for (chunk_means, chunk_vars) in results:
             for h_ind, label_ind in chunk_means.keys():
-                all_means[label_ind, h_ind] = chunk_means[(h_ind, label_ind)]
-                all_vars[label_ind, h_ind] = chunk_vars[(h_ind, label_ind)]
+                all_means[h_ind, label_ind, :] = chunk_means[(h_ind, label_ind)]
+                all_vars[h_ind, label_ind, :] = chunk_vars[(h_ind, label_ind)]
 
         # for ind, (h_tr, h_s) in enumerate(zip(hs_tr, hs_s)):
         #     print('h: {}s'.format(h_s))
