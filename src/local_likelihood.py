@@ -55,13 +55,6 @@ def vector_var_ll(ys, mues, k, h, n, k_type='triangular'):
 
 
 def calc_tr_M(n, h, k_type='triangular'):
-    # n = ys.shape[1]
-    # tr = np.zeros((n))
-    # for k in range(n):
-    #     nom = n * K_func(0, k_type)
-    #     dom = sum([K(j, k, h, k_type) for j in range(n)])
-    #     tr[k] = nom / dom
-    # tr_M = np.sum(tr)
     tr_M = sum([K_func(0, k_type) / sum([K(j, k, h, k_type) for j in range(n)]) for k in range(n)])
     return tr_M
 
@@ -90,12 +83,13 @@ def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
     if np.all(var == 0):
         return np.nan, np.nan
     n = len(y)
+    K0 = K_func(0, k_type)
     # trM = calc_tr_M(n, h, k_type) #  = nK(0) / sum(K[(t_j - t_i) / h]) = nK(0) / sum(K_j,t_i)
     CL_mean = (1 / n) * sum([np.power(y[k] - mue[k], 2) / var[k] for k in range(n)]) + \
-              (1 / n) * sum([2 * K_func(0, k_type) / sum([K(j, k, h, k_type) for j in range(n)]) for k in range(n)])
+              (1 / n) * sum([2 * K0 / sum([K(j, k, h, k_type) for j in range(n)]) for k in range(n)])
                # (1 / n) * 2 * trM
     CL_var_second_term = (1 / n) * sum(
-        [(2 * K_func(0, k_type) * np.power(y[k] - mue[k], 4))  /
+        [(2 * K0 * np.power(y[k] - mue[k], 4)) /
          (sum([K(j, k, h, k_type) for j in range(n)]) * np.power(var[k], 2)) for k in range(n)])
     CL_var = (1 / n) * sum([np.log(var[k]) for k in range(n)]) + CL_var_second_term
     return CL_mean, CL_var
@@ -364,13 +358,12 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot,
          only_one_trace=False, ax=None, index=1, legend_index=1, labels_names=None, labels_ids=None, xlim=None,
          overwrite=False, n_jobs=-2):
     hs_tr = np.array(hs_s) * 1000 / tr
-    n_jobs = utils.get_n_jobs(n_jobs)
     if only_one_trace:
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
         d = np.load(op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(atlas, measure)))
         ys = d['data']
-        if label_name is None:
+        if labels_names is None:
             labels_names = d['names']
             labels_ids = range(len(labels_names))
         else:
@@ -382,54 +375,24 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot,
         else:
             print(subject, sms, run)
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, overwrite=False, n_jobs=n_jobs)
-            # calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, overwrite=overwrite, n_jobs=n_jobs)
+            calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, overwrite=True, n_jobs=n_jobs)
 
-            plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
-            # plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type, overwrite=False,
-            #                      ax=ax, plot_legend=index==legend_index, xlim=xlim)
+            # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
+            # plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type,
+            #                      overwrite=False, ax=None, plot_legend=0, xlim=None)
+
             # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type)
 
 
-if __name__ == '__main__':
-    # subject = 'nmr00956'
-    fsaverage = 'fsaverage'
-    root_fol = utils.existing_fol(
-        ['/home/noam/vic', '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
-    hemi = 'lh'
-    atlas = 'aparc' # 'laus250'
-    measure = 'PCA'
-    # hs_plot = [8,  13,  18, 23]
-    # hs_plot = [4, 6, 12, 22]
-    hs_plot = [5, 10, 15, 25]
-    hs = range(1, 31)
-    # hs = [8,  13,  18, 23]
-    k_types = ['triangular'] # 'Epanechnikov', 'tricube'
-    only_one_trace = False
-    legend_index = 1
-    labels_names = ['posteriorcingulate-lh']
-    figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
-    utils.make_dir(figures_fol)
-    overwrite = True
-    n_jobs = -1
-
-    labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
-
-    # sms = '3mm_SMS1_pa'
-    # run = '006'
-    # fol = '/home/noam/vic/{}/{}/{}'.format(subject, sms, run)
-
+def plot_mean_var():
     from collections import defaultdict, OrderedDict
     import itertools
     gen = {}
     do_plot = False
     xlim = None #[200, 300]
+    labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         print(fol, subject, sms, run)
-        fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
-        tr = utils.load(op.join(fol, 'tr.pkl'))
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, hs_plot, k_types, measure,
-             only_one_trace, None, None, legend_index, None, None, xlim, overwrite, n_jobs)
-
         if subject not in gen:
             gen[subject] = OrderedDict()
         if sms not in gen[subject]:
@@ -459,5 +422,43 @@ if __name__ == '__main__':
             plt.tight_layout()
             plt.savefig(op.join(figures_fol, label_name))
             plt.close()
+
+
+if __name__ == '__main__':
+    # subject = 'nmr00956'
+    fsaverage = 'fsaverage'
+    root_fol = utils.existing_fol(
+        ['/home/noam/vic', '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
+    hemi = 'lh'
+    atlas = 'aparc' # 'laus250'
+    measure = 'PCA'
+    # hs_plot = [8,  13,  18, 23]
+    # hs_plot = [4, 6, 12, 22]
+    hs_plot = [5, 10, 15, 25]
+    hs = range(1, 31)
+    # hs = [8,  13,  18, 23]
+    k_types = ['triangular'] # 'Epanechnikov', 'tricube'
+    only_one_trace = False
+    legend_index = 1
+    labels_names = ['posteriorcingulate-lh']
+    figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
+    utils.make_dir(figures_fol)
+    overwrite = True
+    n_jobs = -1
+    n_jobs = utils.get_n_jobs(n_jobs)
+
+    for fol, subject, sms, run in utils.sms_generator(root_fol):
+        fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
+        tr = utils.load(op.join(fol, 'tr.pkl'))
+        print (tr)
+        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, hs_plot, k_types, measure, only_one_trace,
+             n_jobs=n_jobs)
+        # copy_figures(subject, sms, run, fol, root_fol, 'middletemporal-lh', k_types[0])
+
+
+    # sms = '3mm_SMS1_pa'
+    # run = '006'
+    # fol = '/home/noam/vic/{}/{}/{}'.format(subject, sms, run)
+
 
     print('Finish!')
