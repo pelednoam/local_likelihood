@@ -377,7 +377,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot,
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, overwrite=False, n_jobs=n_jobs)
             calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, overwrite=True, n_jobs=n_jobs)
 
-            # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
+            plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
             # plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type,
             #                      overwrite=False, ax=None, plot_legend=0, xlim=None)
 
@@ -434,8 +434,8 @@ if __name__ == '__main__':
     measure = 'PCA'
     # hs_plot = [8,  13,  18, 23]
     # hs_plot = [4, 6, 12, 22]
-    hs_plot = [5, 10, 15, 25]
     hs = range(1, 31)
+    hs_plot = [5, 10, 15, 25]
     # hs = [8,  13,  18, 23]
     k_types = ['triangular'] # 'Epanechnikov', 'tricube'
     only_one_trace = False
