@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from src import utils
 
 
-def K(i, t, h, type='triangular'):
-    return K_func((i - t) / h, type)
+def K(t_i, t, h, type='triangular'):
+    return K_func((t_i - t) / h, type)
 
 
 def K_func(x, type='triangular'):
@@ -21,25 +21,35 @@ def K_func(x, type='triangular'):
         return pow((1 - pow(abs(x), 3)), 3)
 
 
-def mean_lls(y, k, h, n, k_type='triangular'):
-    # lls: local least square
-    nom = sum([K(i, k, h, k_type) * y[i] for i in range(n)])
-    dom = sum([K(i, k, h, k_type) for i in range(n)])
+def est_mean_t(y, t, t_j, h, k_type='triangular'):
+    n = len(y)
+    nom = sum([K(t[i], t_j, h, k_type) * y[i] for i in range(n)])
+    dom = sum([K(t[i], t_j, h, k_type) for i in range(n)])
     return nom / dom
 
 
-def mean_lls_equispaced(y, k, m, k_type='triangular'):
-    # lls: local least square
-    nom = sum([K_func(l, k_type) * y[l+k] for l in range(-m, m + 1)])
-    dom = sum([K_func(l, k_type) for l in range(-m, m + 1)])
+def est_var_t(y, mue, t, t_j, h, k_type='triangular'):
+    n = len(y)
+    nom = sum([K(t[i], t_j, h, k_type) * pow(y[i] - mue[i], 2) for i in range(n)])
+    dom = sum([K(t[i], t_j, h, k_type) for i in range(n)])
     return nom / dom
 
 
-def var_ll(y, mue, k, h, n, k_type='triangular'):
-    # ll: local likelihood
-    nom = sum([K(i, k, h, k_type) * pow(y[i]-mue[i], 2) for i in range(n)])
-    dom = sum([K(i, k, h, k_type) for i in range(n)])
-    return nom / dom
+def est_mean(y, h, t, k_type='triangular'):
+    n = len(y)
+    return [est_mean_t(y, t, t[j], h, k_type) for j in range(n)]
+
+
+def est_var(y, mue, h, t, k_type='triangular'):
+    n = len(y)
+    return [est_var_t(y, mue, t, t[j], h, k_type) for j in range(n)]
+
+
+# def est_mean_t_equispaced(y, k, m, k_type='triangular'):
+#     # lls: local least square
+#     nom = sum([K_func(l, k_type) * y[l+k] for l in range(-m, m + 1)])
+#     dom = sum([K_func(l, k_type) for l in range(-m, m + 1)])
+#     return nom / dom
 
 
 def vector_mean_ll(ys, k, h, n, k_type='triangular'):
@@ -48,7 +58,7 @@ def vector_mean_ll(ys, k, h, n, k_type='triangular'):
     return nom / dom
 
 
-def vector_var_ll(ys, mues, k, h, n, k_type='triangular'):
+def vector_est_var_t(ys, mues, k, h, n, k_type='triangular'):
     nom = sum([K(i, k, h, k_type) * (ys[:, i] - mues[:, i])*(ys[:, i] - mues[:, i]).T for i in range(n)])
     dom = sum([K(i, k, h, k_type) for i in range(n)])
     return nom / dom
@@ -84,23 +94,15 @@ def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
         return np.nan, np.nan
     n = len(y)
     K0 = K_func(0, k_type)
+    # const_var = np.var(y)
     # trM = calc_tr_M(n, h, k_type) #  = nK(0) / sum(K[(t_j - t_i) / h]) = nK(0) / sum(K_j,t_i)
-    CL_mean = (1 / n) * sum([np.power(y[k] - mue[k], 2) / var[k] for k in range(n)]) + \
-              (1 / n) * sum([2 * K0 / sum([K(j, k, h, k_type) for j in range(n)]) for k in range(n)])
-               # (1 / n) * 2 * trM
-    CL_var_second_term = (1 / n) * sum(
-        [(2 * K0 * np.power(y[k] - mue[k], 4)) /
-         (sum([K(j, k, h, k_type) for j in range(n)]) * np.power(var[k], 2)) for k in range(n)])
-    CL_var = (1 / n) * sum([np.log(var[k]) for k in range(n)]) + CL_var_second_term
+    # CL_mean = (1 / n) * sum([np.power(y[k] - mue[k], 2) / const_var for k in range(n)]) + \
+    CL_mean = (1 / n) * sum([pow(y[t] - mue[t], 2) / var[t] for t in range(n)]) + \
+              (1 / n) * sum([2 * K0 / sum([K(j, t, h, k_type) for j in range(n)]) for t in range(n)])
+    CL_var = (1 / n) * sum([np.log(var[t]) for t in range(n)]) + \
+             (1 / n) * sum([(2 * K0 * pow(y[t] - mue[t], 4)) /
+                            (sum([K(j, t, h, k_type) for j in range(n)]) * pow(var[t], 2)) for t in range(n)])
     return CL_mean, CL_var
-
-
-def est_mean_lls(y, h, k_type='triangular'):
-    return [mean_lls(y, k, h, len(y), k_type) for k in range(len(y))]
-
-
-def est_var_ll(y, mue, h, k_type='triangular'):
-    return [var_ll(y, mue, k, h, len(y), k_type) for k in range(len(y))]
 
 
 def est_vector_mean_ll(ys, h, k_type='triangular'):
@@ -108,17 +110,17 @@ def est_vector_mean_ll(ys, h, k_type='triangular'):
     return np.array([vector_mean_ll(ys, k, h, n, k_type) for k in range(n)]).T
 
 
-def est_vector_var_ll(ys, mues, h, k_type='triangular'):
+def est_vector_est_var_t(ys, mues, h, k_type='triangular'):
     n = ys.shape[1]
-    return np.array([vector_var_ll(ys, mues, k, h, n, k_type) for k in range(n)]).T
+    return np.array([vector_est_var_t(ys, mues, k, h, n, k_type) for k in range(n)]).T
 
 
-def plot_mean_var(y, hs, fol, k_type='triangular'):
+def plot_mean_var(y, hs, t_axis, fol, k_type='triangular'):
     if not op.isfile(op.join(fol, 'ests_mean_{}.pkl'.format(k_type))):
         ests_mean, ests_var = {}, {}
         for h in hs:
-            ests_mean[h] = est_mean_lls(y, h, k_type)
-            ests_var[h] = est_var_ll(y, ests_mean[h], h, k_type)
+            ests_mean[h] = est_mean(y, h, t_axis, k_type)
+            ests_var[h] = est_var(y, ests_mean[h], h, t_axis, k_type)
         utils.save(ests_mean, op.join(fol, 'ests_mean_{}.pkl'.format(k_type)))
         utils.save(ests_var, op.join(fol, 'ests_var_{}.pkl'.format(k_type)))
     else:
@@ -137,6 +139,46 @@ def plot_mean_var(y, hs, fol, k_type='triangular'):
                         alpha=0.2, edgecolor=color, facecolor=color)
     plt.legend()
     plt.savefig(op.join(fol, 'first_vertice_h_var_k_{}.jpg'.format(k_type)))
+
+
+def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', overwrite=False, n_jobs=1):
+    output_fname = op.join(fol, 'mean_var_{}.npz'.format(k_type))
+    if op.isfile(output_fname) and not overwrite:
+        d = np.load(op.join(fol, 'mean_var_{}.npz'.format(k_type)))
+        if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
+            overwrite = True
+            print('The parameter hs_tr is not the same as in the saved file, recalculating.')
+    W = len(hs_s)
+    if not op.isfile(output_fname) or overwrite:
+        all_means, all_vars = np.zeros((ys.shape[0], W)), np.zeros((ys.shape[0], W))
+        h_chunks = utils.chunks(list(zip(hs_tr, hs_s, range(W))), W / n_jobs)
+        params = [(ys, names, h_chunk, t_axis, fol, k_type) for h_chunk in h_chunks]
+        results = utils.run_parallel(_est_mean_and_var_parallel, params, n_jobs)
+        # for chunk_means, chunk_vars in results:
+        #     for (h_ind, mean), var in zip(chunk_means.items(), chunk_vars.values()):
+        #         all_means[h_ind] = mean
+        #         all_vars[h_ind] = var
+        for (chunk_means, chunk_vars) in results:
+            for h_ind, label_ind in chunk_means.keys():
+                all_means[label_ind, h_ind] = chunk_means[(h_ind, label_ind)]
+                all_vars[label_ind, h_ind] = chunk_vars[(h_ind, label_ind)]
+
+        # for ind, (h_tr, h_s) in enumerate(zip(hs_tr, hs_s)):
+        #     print('h: {}s'.format(h_s))
+        #     all_means[ind] = est_vector_mean_ll(ys, h_tr, k_type)
+        #     all_vars[ind] = est_vector_est_var_t(ys, all_means[ind], h_tr, k_type)
+        np.savez(output_fname, means=all_means, vars=all_vars, hs_tr=hs_tr, hs_ms=hs_s)
+
+
+def _est_mean_and_var_parallel(p):
+    ys, labels_names, h_chunk, time_axis, fol, k_type = p
+    all_means, all_vars = {}, {}
+    for h_tr, h_s, h_ind in h_chunk:
+        print('h: {}s'.format(h_s))
+        for label_id, label_name in enumerate(labels_names):
+            mue = all_means[(h_ind, label_id)] = est_mean(ys[label_id], h_s, time_axis, k_type)
+            all_vars[(h_ind, label_id)] = est_var(ys[label_id], mue, h_s, time_axis, k_type)
+    return all_means, all_vars
 
 
 def est_vector_mean_and_var(ys, names, hs_tr, hs_s, fol, k_type='triangular', overwrite=False, n_jobs=1):
@@ -159,7 +201,7 @@ def est_vector_mean_and_var(ys, names, hs_tr, hs_s, fol, k_type='triangular', ov
         # for ind, (h_tr, h_s) in enumerate(zip(hs_tr, hs_s)):
         #     print('h: {}s'.format(h_s))
         #     all_means[ind] = est_vector_mean_ll(ys, h_tr, k_type)
-        #     all_vars[ind] = est_vector_var_ll(ys, all_means[ind], h_tr, k_type)
+        #     all_vars[ind] = est_vector_est_var_t(ys, all_means[ind], h_tr, k_type)
         np.savez(output_fname, means=all_means, vars=all_vars, hs_tr=hs_tr, hs_ms=hs_s)
 
 
@@ -169,7 +211,7 @@ def _est_vector_mean_and_var_parallel(p):
     for h_tr, h_s, h_ind in h_chunk:
         print('h: {}s'.format(h_s))
         all_means[h_ind] = est_vector_mean_ll(ys, h_tr, k_type)
-        all_vars[h_ind] = est_vector_var_ll(ys, all_means[h_ind], h_tr, k_type)
+        all_vars[h_ind] = est_vector_est_var_t(ys, all_means[h_ind], h_tr, k_type)
     return all_means, all_vars
 
 
@@ -210,6 +252,7 @@ def calc_mean_var_cl(ys, fol, hs_tr, k_type='triangular', overwrite=False, n_job
         if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
+        # todo: change!!!
         d = np.load(op.join(fol, 'vector_mean_var_{}.npz'.format(k_type)))
         means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
         mean_cl, var_cl = np.zeros((ys.shape[0], len(hs_tr))), np.zeros((ys.shape[0], len(hs_tr)))
@@ -306,8 +349,8 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
             figs_fol = op.join(root_fol, 'figures', 'mean_var_cl', label_name, cl_name)
             utils.make_dir(figs_fol)
             fig_fname = op.join(figs_fol, '{}_{}_{}_{}.jpg'.format(subject, sms, cl_name, label_name))
-            if op.isfile(fig_fname):
-                continue
+            # if op.isfile(fig_fname):
+            #     continue
             ind = np.arange(len(hs_ms))
             if np.any(np.isnan(cl)):
                 ind = ind[~np.isnan(cl)]
@@ -357,7 +400,6 @@ def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangula
 def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot, k_types=['triangular'], measure='PCA',
          only_one_trace=False, ax=None, index=1, legend_index=1, labels_names=None, labels_ids=None, xlim=None,
          overwrite=False, n_jobs=-2):
-    hs_tr = np.array(hs_s) * 1000 / tr
     if only_one_trace:
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
@@ -369,15 +411,18 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot,
         else:
             ys = ys[labels_ids, :]
 
+    hs_tr = np.array(hs_s) * 1000 / tr
+    t_axis = np.arange(0, tr / 1000 * ys.shape[1], tr / 1000)
     for k_type in k_types:
         if only_one_trace:
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
             print(subject, sms, run)
+            est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, overwrite=True, n_jobs=n_jobs)
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, overwrite=False, n_jobs=n_jobs)
             calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, overwrite=True, n_jobs=n_jobs)
 
-            plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
+            # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
             # plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type,
             #                      overwrite=False, ax=None, plot_legend=0, xlim=None)
 
