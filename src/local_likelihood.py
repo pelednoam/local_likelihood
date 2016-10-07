@@ -142,9 +142,9 @@ def plot_mean_var(y, hs, t_axis, fol, k_type='triangular'):
 
 
 def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', overwrite=False, n_jobs=1):
-    output_fname = op.join(fol, 'mean_var_{}.npz'.format(k_type))
+    output_fname = op.join(fol, 'mean_var_sim_{}.npz'.format(k_type))
     if op.isfile(output_fname) and not overwrite:
-        d = np.load(op.join(fol, 'mean_var_{}.npz'.format(k_type)))
+        d = np.load(op.join(fol, 'mean_var_sim_{}.npz'.format(k_type)))
         if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
             overwrite = True
             print('The parameter hs_tr is not the same as in the saved file, recalculating.')
@@ -256,7 +256,7 @@ def calc_mean_var_cl(ys, fol, hs_tr, k_type='triangular', overwrite=False, n_job
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
         # todo: change!!!
-        d = np.load(op.join(fol, 'vector_mean_var_{}.npz'.format(k_type)))
+        d = np.load(op.join(fol, 'mean_var_sim_{}.npz'.format(k_type)))
         means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
         mean_cl, var_cl = np.zeros((ys.shape[0], len(hs_tr))), np.zeros((ys.shape[0], len(hs_tr)))
         params_to_chunk = []
@@ -400,14 +400,18 @@ def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangula
                 op.join(root_fol, 'mean_var_figures', '{}_{}_{}_{}_{}.jpg'.format(subject, sms, run, label_name, k_type)))
 
 
-def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot, k_types=['triangular'], measure='PCA',
-         only_one_trace=False, ax=None, index=1, legend_index=1, labels_names=None, labels_ids=None, xlim=None,
-         overwrite=False, n_jobs=-2):
+def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
+         sim=False, only_one_trace=False, labels_names=None, labels_ids=None, n_jobs=-2):
     if only_one_trace:
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
         d = np.load(op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(atlas, measure)))
-        ys = d['data']
+        if not sim:
+            ys = d['data']
+        else:
+            import scipy.io as sio
+            d_sim = sio.loadmat(op.join(fol, 'fmri_timecourse_sim.mat'))
+            ys = d_sim['timecourse_use_sim'].T
         if labels_names is None:
             labels_names = d['names']
             labels_ids = range(len(labels_names))
@@ -492,6 +496,7 @@ if __name__ == '__main__':
     figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     utils.make_dir(figures_fol)
     overwrite = True
+    sim = True
     n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
 
@@ -499,7 +504,7 @@ if __name__ == '__main__':
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print (tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, hs_plot, k_types, measure, only_one_trace,
+        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, only_one_trace,
              n_jobs=n_jobs)
         # copy_figures(subject, sms, run, fol, root_fol, 'middletemporal-lh', k_types[0])
 

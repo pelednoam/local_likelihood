@@ -5,11 +5,16 @@ import mne
 import numpy as np
 import sklearn.decomposition as deco
 import matplotlib.pyplot as plt
+import scipy.signal
+import scipy.io as sio
+import shutil
 import glob
 from src import freesurfer_utils as fu
 from src import utils
 
-FREE_SURFER_HOME = os.environ['FREESURFER_HOME']
+FREE_SURFER_HOME = os.environ.get('FREESURFER_HOME', '')
+if FREE_SURFER_HOME == '':
+    print('Freesurfer is not sourced!')
 
 
 def convert_fmri_file(volume_fname_template, from_format, to_format):
@@ -41,7 +46,8 @@ def load_first_vertice(fmri_fname):
     plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.jpg'))
 
 
-def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, measure='mean', do_plot=False, local_subjects_dir=''):
+
+def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, measure='PCA', do_plot=False, local_subjects_dir=''):
     output_fname = op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(aparc_name, measure))
     if op.isfile(output_fname):
         return
@@ -85,6 +91,35 @@ def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, m
             plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'figures', '{}.jpg'.format(label.name)))
             plt.close()
     np.savez(output_fname, data=labels_data, names=labels_names)
+
+
+def calc_cov_and_power_spectrum(fol, aparc_name, tr, measure='PCA'):
+    input_fname = op.join(fol, 'labels_data_{}_{}.npz'.format(aparc_name, measure))
+    output_fname = op.join(fol, 'cov_pxx_{}_{}.npz'.format(aparc_name, measure))
+    d = np.load(input_fname)
+    labels_data = d['data']
+    labels_names = d['names']
+    cov = np.cov(labels_data)
+    f, Pxx = scipy.signal.welch(labels_data, tr / 1000, nperseg=32)
+    mean_Pxx = np.mean(Pxx, 0)
+    np.savez(output_fname, f=f, Pxx=Pxx, mean_Pxx=mean_Pxx, cov=cov)
+    sio.savemat(op.join(fol, 'cov_pxx_{}_{}.mat'.format(aparc_name, measure)), dict(
+        timelength=500.0, TRin=(tr/1000), TRout=(tr/1000), P_target=mean_Pxx, cov_target=cov))
+
+
+def calc_simulated_labels(fol, root_fol, aparc_name, tr, measure='PCA', data_len=500):
+    out_fname = op.join(fol, 'fmri_timecourse_sim.mat')
+    if op.isfile(out_fname):
+        return
+    d = np.load(op.join(fol, 'cov_pxx_{}_{}.npz'.format(aparc_name, measure)))
+    matlab_command = op.join(root_fol, 'simulate_BOLD_timecourse_func_v2.m')
+    matlab_command = "'{}'".format(matlab_command)
+    #todo: data_len should be like the data
+    sio.savemat(op.join(root_fol, 'params.mat'), mdict={
+        'cov': d['cov'], 'tr': (tr / 1000), 'mean_Pxx': d['mean_Pxx'], 'data_len': float(data_len)})
+    cmd = 'matlab -nodisplay -nosplash -nodesktop -r "run({}); exit;"'.format(matlab_command)
+    utils.run_script(cmd)
+    shutil.move(op.join(root_fol, 'fmri_timecourse_sim.mat'), out_fname)
 
 
 def plot_fmri_time_series(fmri_fname, aparc_name, measure):
@@ -142,11 +177,11 @@ if __name__ == '__main__':
     fsaverage = 'fsaverage'
     # sms = '3mm_SMS1_pa'
     # run = '006'
-    root_fol = '/home/noam/vic/'
-    # root_fol = '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
-    # fol = '/home/noam/vic/{}/{}/{}'.format(subject, sms, run)
+    root_fol = utils.existing_fol(
+        ['/home/noam/vic', '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
     hemi = 'lh'
     local_subjects_dir = os.environ['SUBJECTS_DIR']
+
     subjects_dir = '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/subjects'
     aparc_name = 'aparc' # 'laus250'
     volume_fname_template = 'fmcpr.sm5.{}.{}.{}'.format(fsaverage, hemi, '{format}')
@@ -154,7 +189,9 @@ if __name__ == '__main__':
 
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         image_name = convert_fmri_file(op.join(fol, volume_fname_template), 'nii.gz', 'mgz')
-        get_tr(image_name)
-        morph_labels_to_all_vertices(fsaverage, aparc_name, subjects_dir, hemi, n_jobs, local_subjects_dir=local_subjects_dir)
-        calc_measure_across_labels(image_name, fsaverage, aparc_name, hemi, subjects_dir, measure, local_subjects_dir=local_subjects_dir)
+        tr = get_tr(image_name)
+        # morph_labels_to_all_vertices(fsaverage, aparc_name, subjects_dir, hemi, n_jobs, local_subjects_dir=local_subjects_dir)
+        # calc_measure_across_labels(image_name, fsaverage, aparc_name, hemi, subjects_dir, measure, local_subjects_dir=local_subjects_dir)
         # plot_fmri_time_series(image_name, aparc_name, measure)
+        # calc_cov_and_power_spectrum(fol, aparc_name, tr, measure)
+        calc_simulated_labels(fol, root_fol, aparc_name, tr, measure)
