@@ -89,7 +89,7 @@ def vector_mean_cl_stat(ys, mues, h, k_type='triangular'):
     return C_L
 
 
-def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
+def mean_var_cl_stat(subject, sms, run, y, mue, var, h, t, label_ind, k_type='triangular'):
     if np.all(var == 0):
         return np.nan, np.nan
     n = len(y)
@@ -97,11 +97,25 @@ def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
     # const_var = np.var(y)
     # trM = calc_tr_M(n, h, k_type) #  = nK(0) / sum(K[(t_j - t_i) / h]) = nK(0) / sum(K_j,t_i)
     # CL_mean = (1 / n) * sum([np.power(y[k] - mue[k], 2) / const_var for k in range(n)]) + \
-    CL_mean = (1 / n) * sum([pow(y[t] - mue[t], 2) / var[t] for t in range(n)]) + \
-              (1 / n) * sum([2 * K0 / sum([K(j, t, h, k_type) for j in range(n)]) for t in range(n)])
-    CL_var = (1 / n) * sum([np.log(var[t]) for t in range(n)]) + \
-             (1 / n) * sum([(2 * K0 * pow(y[t] - mue[t], 4)) /
-                            (sum([K(j, t, h, k_type) for j in range(n)]) * pow(var[t], 2)) for t in range(n)])
+    CL_mean_1 = [pow(y[i] - mue[i], 2) / var[i] for i in range(n)]
+    CL_mean_2 = [2 * K0 / sum([K(t[j], t[i], h, k_type) for j in range(n)]) for i in range(n)]
+    CL_mean = (1 / n) * sum(CL_mean_1) + (1 / n) * sum(CL_mean_2)
+
+    CL_var_1 = [np.log(var[i]) for i in range(n)]
+    CL_var_2 = [(2 * K0 * pow(y[i] - mue[i], 4)) /
+        (sum([K(t[j], t[i], h, k_type) for j in range(n)]) * pow(var[i], 2)) for i in range(n)]
+    CL_var = (1 / n) * sum(CL_var_1) + (1 / n) * sum(CL_var_2)
+    plt.subplots(2, 2)
+    plt.subplot(221)
+    plt.plot(t, CL_mean_1)
+    plt.subplot(222)
+    plt.plot(t, CL_mean_2)
+    plt.subplot(223)
+    plt.plot(t, CL_var_1)
+    plt.subplot(224)
+    plt.plot(t, CL_var_2)
+    plt.savefig('/home/noam/vic/figures/AIC_terms2/{}_{}_{}_{}_{}.jpg'.format(subject, sms, run, h, label_ind))
+
     return CL_mean, CL_var
 
 
@@ -141,21 +155,19 @@ def plot_mean_var(y, hs, t_axis, fol, k_type='triangular'):
     plt.savefig(op.join(fol, 'first_vertice_h_var_k_{}.jpg'.format(k_type)))
 
 
-def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', overwrite=False, n_jobs=1):
-    output_fname = op.join(fol, 'mean_var_sim_{}.npz'.format(k_type))
+def est_mean_and_var(ys, labels_names, hs_s, t_axis, fol, k_type='triangular', overwrite=False, n_jobs=1):
+    output_fname = op.join(fol, 'mean_var_{}.npz'.format(k_type))
     if op.isfile(output_fname) and not overwrite:
-        d = np.load(op.join(fol, 'mean_var_sim_{}.npz'.format(k_type)))
-        if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
+        d = np.load(op.join(fol, 'mean_var_{}.npz'.format(k_type)))
+        if np.any(np.array(d['hs_s']) != np.array(hs_s)):
             overwrite = True
             print('The parameter hs_tr is not the same as in the saved file, recalculating.')
-    W = len(hs_s)
+    W, T, L = len(hs_s), ys.shape[1], len(labels_names)
     if not op.isfile(output_fname) or overwrite:
         # all_means, all_vars = np.zeros((ys.shape[0], W)), np.zeros((ys.shape[0], W))
-        all_means = np.zeros((len(hs_tr), len(names), ys.shape[1]))
-        all_vars = np.zeros((len(hs_tr), len(names), ys.shape[1]))
-
-        h_chunks = utils.chunks(list(zip(hs_tr, hs_s, range(W))), W / n_jobs)
-        params = [(ys, names, h_chunk, t_axis, fol, k_type) for h_chunk in h_chunks]
+        all_means, all_vars = np.zeros((W, L, T)), np.zeros((W, L, T))
+        h_chunks = utils.chunks(list(zip(hs_s, range(W))), W / n_jobs)
+        params = [(ys, labels_names, h_chunk, t_axis, fol, k_type) for h_chunk in h_chunks]
         results = utils.run_parallel(_est_mean_and_var_parallel, params, n_jobs)
         # for chunk_means, chunk_vars in results:
         #     for (h_ind, mean), var in zip(chunk_means.items(), chunk_vars.values()):
@@ -170,13 +182,13 @@ def est_mean_and_var(ys, names, hs_tr, hs_s, t_axis, fol, k_type='triangular', o
         #     print('h: {}s'.format(h_s))
         #     all_means[ind] = est_vector_mean_ll(ys, h_tr, k_type)
         #     all_vars[ind] = est_vector_est_var_t(ys, all_means[ind], h_tr, k_type)
-        np.savez(output_fname, means=all_means, vars=all_vars, hs_tr=hs_tr, hs_ms=hs_s)
+        np.savez(output_fname, means=all_means, vars=all_vars, hs_ms=hs_s)
 
 
 def _est_mean_and_var_parallel(p):
     ys, labels_names, h_chunk, time_axis, fol, k_type = p
     all_means, all_vars = {}, {}
-    for h_tr, h_s, h_ind in h_chunk:
+    for h_s, h_ind in h_chunk:
         print('h: {}s'.format(h_s))
         for label_id, label_name in enumerate(labels_names):
             mue = all_means[(h_ind, label_id)] = est_mean(ys[label_id], h_s, time_axis, k_type)
@@ -247,38 +259,43 @@ def _calc_vector_mean_cl_parallel(p):
     return mean_cl
 
 
-def calc_mean_var_cl(ys, fol, hs_tr, k_type='triangular', overwrite=False, n_jobs=1):
+def calc_mean_var_cl(subject, sms, run, ys, fol, hs_s, time_axis, k_type='triangular', overwrite=False, n_jobs=1):
     from itertools import product
     output_fname = op.join(fol, 'mean_var_cl_{}.npz'.format(k_type))
     if op.isfile(output_fname) and not overwrite:
         d = np.load(output_fname)
-        if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
+        if np.any(np.array(d['hs_s']) != np.array(hs_s)):
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
         # todo: change!!!
-        d = np.load(op.join(fol, 'mean_var_sim_{}.npz'.format(k_type)))
-        means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
-        mean_cl, var_cl = np.zeros((ys.shape[0], len(hs_tr))), np.zeros((ys.shape[0], len(hs_tr)))
+        # d = np.load(op.join(fol, 'vector_mean_var_{}.npz'.format(k_type)))
+        d = np.load(op.join(fol, 'mean_var_{}.npz'.format(k_type)))
+        means_est, vars_est, hs_ms = d['means'], d['vars'], d['hs_ms']
+        mean_cl, var_cl = np.zeros((ys.shape[0], len(hs_s))), np.zeros((ys.shape[0], len(hs_s)))
+        # t0 = int(2 * (max(hs_s) - 1))
+
         params_to_chunk = []
-        for (h_tr_ind, h_tr), label_ind in product(enumerate(hs_tr), range(ys.shape[0])):
-            params_to_chunk.append((h_tr_ind, h_tr, label_ind))
+        for (h_s_ind, h_s), label_ind in product(enumerate(hs_s), range(ys.shape[0])):
+            params_to_chunk.append((h_s_ind, h_s, label_ind))
         h_l_chunks = utils.chunks(params_to_chunk, len(params_to_chunk) / n_jobs)
-        params = [(ys, means_est, vars_est, h_l_chunk, k_type) for h_l_chunk in h_l_chunks]
+        params = [(subject, sms, run, ys, means_est, vars_est, h_l_chunk, time_axis, k_type) for h_l_chunk in h_l_chunks]
         results = utils.run_parallel(_calc_mean_var_cl_parallel, params, n_jobs)
         for (chunk_mean_cl, chunk_var_cl) in results:
             for h_ind, label_ind in chunk_mean_cl.keys():
                 mean_cl[label_ind, h_ind] = chunk_mean_cl[(h_ind, label_ind)]
                 var_cl[label_ind, h_ind] = chunk_var_cl[(h_ind, label_ind)]
-        np.savez(output_fname, mean_cl=mean_cl, var_cl=var_cl, hs_tr=hs_tr, hs_ms=hs_ms)
+        np.savez(output_fname, mean_cl=mean_cl, var_cl=var_cl, hs_ms=hs_ms)
 
 
 def _calc_mean_var_cl_parallel(p):
-    ys, means_est, vars_est, h_l_chunk, k_type = p
+    subject, sms, run, ys, means_est, vars_est, h_l_chunk, time_axis, k_type = p
     mean_cl, var_cl = {}, {}
-    for h_ind, h_tr, label_ind in h_l_chunk:
-        print(h_tr)
-        mean_cl[(h_ind, label_ind)], var_cl[(h_ind, label_ind)] = mean_var_cl_stat(
-            ys[label_ind, :], means_est[h_ind, label_ind, :], vars_est[h_ind, label_ind, :], h_tr, k_type)
+    t0 = np.where(time_axis > 30)[0][0]  # int(2 * (max(hs_ms) - 1))
+    time_axis = time_axis[t0:]
+    for h_ind, h_s, label_ind in h_l_chunk:
+        print(h_s)
+        mean_cl[(h_ind, label_ind)], var_cl[(h_ind, label_ind)] = mean_var_cl_stat(subject, sms, run,
+            ys[label_ind, t0:], means_est[h_ind, label_ind, t0:], vars_est[h_ind, label_ind, t0:], h_s, time_axis, label_ind, k_type)
     return mean_cl, var_cl
 
 
@@ -291,13 +308,17 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
     majorFormatter = FormatStrFormatter('%d')
     minorLocator = MultipleLocator(50)
 
-    d = np.load(op.join(fol, 'vector_mean_var_{}.npz'.format(k_type)))
-    means, vars, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
+    input_fname = op.join(fol, 'mean_var_{}.npz'.format(k_type))
+    # input_fname = op.join(fol, 'vector_mean_var_{}.npz'.format(k_type))
+
+    d = np.load(input_fname)
+    means, vars, hs_ms = d['means'], d['vars'], d['hs_ms']
     boynton_colors = cycle(["red", "green",  "magenta", "yellow", "pink", "orange", "brown", "gray"])
-    t0 = int(2 * (max(hs_tr) - 1))
     # t = range(ys.shape[1])[t0:]
-    t = np.arange(ys.shape[1])[t0:] * tr / 1000
-    print(sms, tr, t[0], t[-1], ys.shape[1])
+    t_axis = np.arange(0, tr / 1000 * ys.shape[1], tr / 1000)
+    t0 = 0# np.where(t_axis>30)[0][0] #int(2 * (max(hs_ms) - 1))
+    t_axis = t_axis[t0:]
+    # t = np.arange(ys.shape[1])[t0:] * tr / 1000
     utils.make_dir(op.join(fol, 'pca_labels'))
 
     for y, label_name, label_ind in zip(ys, names, label_ids):
@@ -306,16 +327,18 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
         #     continue
         if ax is None:
             fig, ax = plt.subplots()
-        ax.plot(t, y[t0:], 'b', label='real')
+        ax.plot(t_axis, y[t0:], 'b', label='real')
         # for h_ind, (h_ms, color) in enumerate(zip(hs_ms, boynton_colors)):
         for h_s in hs_plot:
             h_ind = np.where(np.array(hs_ms) == h_s)[0][0]
-            h_ms = hs_ms[h_ind]
+            # h_ms = hs_ms[h_ind]
             color = next(boynton_colors)
+            if means.shape[1] == 1 and len(label_ids) == 1:
+                label_ind = 0
             mean = means[h_ind, label_ind, t0:]
             error = np.power(vars[h_ind, label_ind, t0:], 0.5)
-            ax.plot(t, mean, color, label='w {:d}s'.format(h_ms))
-            ax.fill_between(t, mean - error, mean + error,
+            ax.plot(t_axis, mean, color, label='w {:d}s'.format(h_s))
+            ax.fill_between(t_axis, mean - error, mean + error,
                             alpha=0.2, edgecolor=color, facecolor=color)
         if plot_legend:
             ax.legend(bbox_to_anchor=(1.05, 1.1))
@@ -341,20 +364,24 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
 
 def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='triangular'):
     input_fname = op.join(fol, 'mean_var_cl_{}.npz'.format(k_type))
+    utils.print_modif_time(input_fname)
     if not op.isfile(input_fname):
         shutil.move(op.join(fol, 'mean_cl_{}.npz'.format(k_type)), input_fname)
     d = np.load(input_fname)
-    mean_cl, var_cl, hs_tr, hs_ms = d['mean_cl'], d['var_cl'], d['hs_tr'], d['hs_ms']
+    mean_cl, var_cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
     for cl_vector, cl_name in zip([mean_cl + var_cl, mean_cl, var_cl], ['AIC', 'AIC_mean', 'AIC_var']):
         for label_ind in range(mean_cl.shape[0]):
             cl = cl_vector[label_ind]
             label_name = labels_names[label_ind]
-            figs_fol = op.join(root_fol, 'figures', 'mean_var_cl', label_name, cl_name)
+            figs_fol = op.join(root_fol, 'figures', 'mean_var_cl_new2', label_name, cl_name)
             utils.make_dir(figs_fol)
-            fig_fname = op.join(figs_fol, '{}_{}_{}_{}.jpg'.format(subject, sms, cl_name, label_name))
+            fig_fname = op.join(figs_fol, '{}_{}_{}_{}_{}.jpg'.format(subject, sms, run, cl_name, label_name))
             # if op.isfile(fig_fname):
             #     continue
             ind = np.arange(len(hs_ms))
+            # ind = ind[5:]
+            # cl = cl[ind]
+
             if np.any(np.isnan(cl)):
                 ind = ind[~np.isnan(cl)]
                 cl = cl[ind]
@@ -400,38 +427,37 @@ def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangula
                 op.join(root_fol, 'mean_var_figures', '{}_{}_{}_{}_{}.jpg'.format(subject, sms, run, label_name, k_type)))
 
 
-def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
-         sim=False, only_one_trace=False, labels_names=None, labels_ids=None, n_jobs=-2):
+def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, hs_plot, k_types=['triangular'], measure='PCA',
+         only_one_trace=False, ax=None, index=1, legend_index=1, labels_names=None, labels_ids=None, xlim=None,
+         overwrite=False, n_jobs=-2):
     if only_one_trace:
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
         d = np.load(op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(atlas, measure)))
-        if not sim:
-            ys = d['data']
-        else:
-            import scipy.io as sio
-            d_sim = sio.loadmat(op.join(fol, 'fmri_timecourse_sim.mat'))
-            ys = d_sim['timecourse_use_sim'].T
+        ys = d['data']
         if labels_names is None:
             labels_names = d['names']
             labels_ids = range(len(labels_names))
         else:
             ys = ys[labels_ids, :]
 
-    hs_tr = np.array(hs_s) * 1000 / tr
+    # hs_tr = np.array(hs_s) * 1000 / tr
     t_axis = np.arange(0, tr / 1000 * ys.shape[1], tr / 1000)
+    # t0 = np.where(t_axis > 30)[0][0] #int(2 * (max(hs_ms) - 1))
+    # t_axis = t_axis[t0:]
+    # ys = ys[:, t0:]
     for k_type in k_types:
         if only_one_trace:
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
             print(subject, sms, run)
-            est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, overwrite=True, n_jobs=n_jobs)
+            # est_mean_and_var(ys, labels_names, hs_s, t_axis, fol, k_type, overwrite=True, n_jobs=n_jobs)
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, overwrite=False, n_jobs=n_jobs)
-            calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, overwrite=True, n_jobs=n_jobs)
+            # calc_mean_var_cl(subject, sms, run, ys, fol, hs_s, t_axis, k_type=k_type, overwrite=True, n_jobs=n_jobs)
 
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type)
             # plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type,
-            #                      overwrite=False, ax=None, plot_legend=0, xlim=None)
+                                 # overwrite=False, ax=None, plot_legend=0, xlim=None)
 
             # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type)
 
@@ -439,10 +465,20 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 def plot_mean_var():
     from collections import defaultdict, OrderedDict
     import itertools
-    gen = {}
-    do_plot = False
-    xlim = None #[200, 300]
+
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
+    label_name = 'posteriorcingulate-lh'
+    labels_ids = np.where(labels_names == label_name)[0]
+    labels_names = [label_name]
+    # labels_ids = range(len(labels_names))
+
+    figures_fol = op.join(root_fol, 'figures', 'smss_per_label2')
+    utils.make_dir(figures_fol)
+    k_type = 'triangular' # 'Epanechnikov', 'tricube'
+
+    gen = {}
+    do_plot = True
+    xlim = None #[200, 300]
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         print(fol, subject, sms, run)
         if subject not in gen:
@@ -461,13 +497,16 @@ def plot_mean_var():
             axs = [None] #* len(gen[subject].keys())
         for index, (ax, sms) in enumerate(zip(axs, gen[subject].keys())):
             fol, run = gen[subject][sms][0]
-            fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
             tr = utils.load(op.join(fol, 'tr.pkl'))
-            print(tr)
+            d = np.load(op.join(fol, 'labels_data_{}_{}.npz'.format(atlas, measure)))
+            ys = d['data']
+            ys = ys[labels_ids, :]
+            plot_vector_mean_var(subject, sms, run, ys, labels_names, labels_ids, fol, tr, hs_plot, k_type,
+                                 overwrite=False, ax=ax, plot_legend=index == 1, xlim=xlim)
+
             # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, hs_plot, k_types, measure,
             #      only_one_trace, ax, index, legend_index, [label_name], [label_id], xlim, overwrite, n_jobs)
         # copy_figures(subject, sms, run, fol, root_fol, 'middletemporal-lh', k_types[0])
-    # plot_vector_mean_var_different_sms(gen)
 
         if do_plot:
             utils.maximize_figure(plt)
@@ -486,26 +525,30 @@ if __name__ == '__main__':
     measure = 'PCA'
     # hs_plot = [8,  13,  18, 23]
     # hs_plot = [4, 6, 12, 22]
-    hs = range(1, 31)
+    hs = range(1, 61)
     hs_plot = [5, 10, 15, 25]
     # hs = [8,  13,  18, 23]
     k_types = ['triangular'] # 'Epanechnikov', 'tricube'
     only_one_trace = False
     legend_index = 1
-    labels_names = ['posteriorcingulate-lh']
+    labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
+    label_name = 'posteriorcingulate-lh'
+    labels_ids = np.where(labels_names == label_name)[0]
+    labels_names = [label_name]
     figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     utils.make_dir(figures_fol)
     overwrite = True
-    sim = True
     n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
+
+    plot_mean_var()
 
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print (tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, only_one_trace,
-             n_jobs=n_jobs)
+        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, hs_plot, k_types, measure, only_one_trace,
+        #      n_jobs=n_jobs, labels_names=labels_names, labels_ids=labels_ids)
         # copy_figures(subject, sms, run, fol, root_fol, 'middletemporal-lh', k_types[0])
 
 

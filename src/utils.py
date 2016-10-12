@@ -201,3 +201,10 @@ def existing_fol(fols):
         if op.isdir(fol):
             return fol
     raise Exception('None of the folders exist!')
+
+
+def print_modif_time(fname):
+    from datetime import datetime
+    last_modified_date = datetime.fromtimestamp(op.getmtime(fname))
+    print('{} was modified at {}, {} ago'.format(namebase(fname), last_modified_date,
+                                                 datetime.now() - last_modified_date))
