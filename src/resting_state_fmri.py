@@ -102,21 +102,23 @@ def calc_cov_and_power_spectrum(fol, aparc_name, tr, measure='PCA'):
     cov = np.cov(labels_data)
     f, Pxx = scipy.signal.welch(labels_data, tr / 1000, nperseg=32)
     mean_Pxx = np.mean(Pxx, 0)
-    np.savez(output_fname, f=f, Pxx=Pxx, mean_Pxx=mean_Pxx, cov=cov)
-    sio.savemat(op.join(fol, 'cov_pxx_{}_{}.mat'.format(aparc_name, measure)), dict(
-        timelength=500.0, TRin=(tr/1000), TRout=(tr/1000), P_target=mean_Pxx, cov_target=cov))
+    np.savez(output_fname, f=f, Pxx=Pxx, mean_Pxx=mean_Pxx, cov=cov, timelength=labels_data.shape[1])
+    # sio.savemat(op.join(fol, 'cov_pxx_{}_{}.mat'.format(aparc_name, measure)), dict(
+    #     timelength=labels_data.shape[1], TRin=(tr/1000), TRout=(tr/1000), P_target=mean_Pxx, cov_target=cov))
 
 
-def calc_simulated_labels(fol, root_fol, aparc_name, tr, measure='PCA', data_len=500):
+def calc_simulated_labels(fol, root_fol, aparc_name, tr, measure='PCA'):
     out_fname = op.join(fol, 'fmri_timecourse_sim.mat')
-    if op.isfile(out_fname):
-        return
+    # if op.isfile(out_fname):
+    #     return
     d = np.load(op.join(fol, 'cov_pxx_{}_{}.npz'.format(aparc_name, measure)))
     matlab_command = op.join(root_fol, 'simulate_BOLD_timecourse_func_v2.m')
     matlab_command = "'{}'".format(matlab_command)
-    #todo: data_len should be like the data
+    timelength = float(d['timelength'])
+    if timelength % 2 != 0:
+        timelength += 1
     sio.savemat(op.join(root_fol, 'params.mat'), mdict={
-        'cov': d['cov'], 'tr': (tr / 1000), 'mean_Pxx': d['mean_Pxx'], 'data_len': float(data_len)})
+        'cov': d['cov'], 'tr': (tr / 1000), 'mean_Pxx': d['mean_Pxx'], 'data_len': timelength})
     cmd = 'matlab -nodisplay -nosplash -nodesktop -r "run({}); exit;"'.format(matlab_command)
     utils.run_script(cmd)
     shutil.move(op.join(root_fol, 'fmri_timecourse_sim.mat'), out_fname)

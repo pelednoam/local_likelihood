@@ -307,19 +307,21 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
         #     continue
         if ax is None:
             fig, ax = plt.subplots()
-        ax.plot(t, y[t0:], 'b', label='real')
-        # for h_ind, (h_ms, color) in enumerate(zip(hs_ms, boynton_colors)):
+        lines = []
+        l, = ax.plot(t, y[t0:], 'b', label='real')
+        lines.append(l)
         for h_s in hs_plot:
             h_ind = np.where(np.array(hs_ms) == h_s)[0][0]
             h_ms = hs_ms[h_ind]
             color = next(boynton_colors)
             mean = means[h_ind, label_ind, t0:]
             error = np.power(vars[h_ind, label_ind, t0:], 0.5)
-            ax.plot(t, mean, color, label='w {:d}s'.format(h_ms))
+            l, = ax.plot(t, mean, color, label='w {:d}s'.format(h_ms))
+            lines.append(l)
             ax.fill_between(t, mean - error, mean + error,
                             alpha=0.2, edgecolor=color, facecolor=color)
         if plot_legend:
-            ax.legend(bbox_to_anchor=(1.05, 1.1))
+            ax.legend(handles=lines, bbox_to_anchor=(1.05, 1.1))
 
         ax.set_xlabel('Time (s)')
         if ax is None:
@@ -405,38 +407,42 @@ def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangula
                 op.join(root_fol, 'mean_var_figures', '{}_{}_{}_{}_{}.jpg'.format(subject, sms, run, label_name, k_type)))
 
 
-def compare_vector_mean_var_cl(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
-         labels_names=None, labels_ids=None, only_one_trace=False, n_jobs=-2):
+def compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types=['triangular']):
 
     for k_type in k_types:
         d = np.load(op.join(fol, 'vector_mean_cl_{}.npz'.format(k_type)))
-        mean_cl, hs_ms = d['mean_cl'], d['hs_ms']
+        cl, hs_ms = d['mean_cl'], d['hs_ms']
         d = np.load(op.join(fol, 'vector_mean_cl_sim_{}.npz'.format(k_type)))
-        mean_cl_sim, hs_ms_sim = d['mean_cl'], d['hs_ms']
+        cl_sim, hs_ms_sim = d['mean_cl'], d['hs_ms']
 
         fig = plt.figure()
         width = 0.35
         ind = np.arange(len(hs_ms))
         # plt.bar(ind, cl, width=width)
-        plt.scatter(ind, cl, marker='o', facecolors='none')
+        plt.scatter(ind, cl, marker='o', facecolors='none', label='real data')
+        plt.scatter(ind, cl_sim, marker='^', facecolors='none', label='simulated data')
         # plt.xticks(ind + width / 2, hs_ms)
-        plt.title('{} {} {} {}{}'.format(cl_name, subject, sms, run, ' sim' if sim else ''))
+        plt.title('{} {} {} {}{}'.format('AIC mean', subject, sms, run, ' sim' if sim else ''))
         plt.xlabel('window-width (s)')
         # plt.text(cl.argmin(), cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
+        plt.legend()
         plt.scatter(cl.argmin(), cl.min(), marker='o')
+        plt.scatter(cl_sim.argmin(), cl_sim.min(), marker='^')
+        plt.plot(ind, cl, '--')
+        plt.plot(ind, cl_sim, '--')
         plt.xlim([-0.5, len(cl) + 0.5])
+
         utils.maximize_figure(plt)
         plt.tight_layout()
         # plt.show()
-        figures_fol = op.join(root_fol, 'figures', 'cl_mean_figures{}'.format('_sim' if sim else ''))
+        figures_fol = op.join(root_fol, 'figures', 'cl_mean_comparison_figures')
         utils.make_dir(figures_fol)
-        plt.savefig(op.join(figures_fol, 'vector_mean_cl_{}_{}_{}{}.jpg'.format(
-            subject, run, sms, '_sim' if sim else '')), dpi=200)
+        plt.savefig(op.join(figures_fol, 'vector_mean_cl_{}_{}_{}.jpg'.format(subject, sms, run)), dpi=200)
         plt.close()
 
 
 def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
-         sim=False, labels_names=None, labels_ids=None, only_one_trace=False, n_jobs=-2):
+         sim=False, labels_names=None, labels_ids=None, only_one_trace=False, overwrite=False, n_jobs=-2):
     if only_one_trace:
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
@@ -464,9 +470,9 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
             # calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type, sim)
 
-            # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=False, n_jobs=n_jobs)
+            est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
+            # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
 
 
 def plot_mean_var(k_type='triangular', sim=False):
@@ -505,7 +511,7 @@ def plot_mean_var(k_type='triangular', sim=False):
                 d_sim = sio.loadmat(op.join(fol, 'fmri_timecourse_sim.mat'))
                 ys = d_sim['timecourse_use_sim'].T
 
-            plot_vector_mean_var(subject, sms, run, ys, labels_names, label_ids, fol, tr, hs_plot, k_type, sim,
+            plot_vector_mean_var(subject, sms, run, ys, [label_name], [label_id], fol, tr, hs_plot, k_type, sim,
                                  overwrite=False, ax=ax, plot_legend=index==1, xlim=None)
 
         utils.maximize_figure(plt)
@@ -535,7 +541,7 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = True
-    sim = False
+    sim = True
     n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
 
@@ -543,19 +549,16 @@ if __name__ == '__main__':
     labels_ids = range(len(labels_names))
 
     # plot_mean_var(k_types[0], sim)
-    compare_vector_mean_var_cl
+
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print (tr)
         main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-             labels_ids, only_one_trace, n_jobs=n_jobs)
-        # copy_figures(subject, sms, run, fol, root_fol, 'middletemporal-lh', k_types[0])
+             labels_ids, only_one_trace, overwrite, n_jobs=n_jobs)
+        # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-
-    # sms = '3mm_SMS1_pa'
-    # run = '006'
-    # fol = '/home/noam/vic/{}/{}/{}'.format(subject, sms, run)
 
 
     print('Finish!')
+
