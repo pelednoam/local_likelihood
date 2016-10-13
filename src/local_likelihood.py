@@ -4,7 +4,7 @@ import shutil
 import matplotlib.pyplot as plt
 
 from src import utils
-
+import time
 
 def K(t_i, t, h, type='triangular'):
     return K_func((t_i - t) / h, type)
@@ -292,7 +292,7 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
     majorFormatter = FormatStrFormatter('%d')
     minorLocator = MultipleLocator(50)
 
-    d = np.load(op.join(fol, 'mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
+    d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
     means, vars, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
     boynton_colors = cycle(["red", "green",  "magenta", "yellow", "pink", "orange", "brown", "gray"])
     t0 = int(2 * (max(hs_tr) - 1))
@@ -441,6 +441,66 @@ def compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types=['trian
         plt.close()
 
 
+def plot_mean_var(k_type='triangular', sim=False):
+    from collections import defaultdict, OrderedDict
+    import itertools
+
+    xlim = None #[200, 300]
+    figures_fol = op.join(root_fol, 'figures', 'smss_per_label{}{}'.format(
+        '_window' if not xlim is None else '', '_sim' if sim else ''))
+    utils.make_dir(figures_fol)
+    gen, data = {}, {}
+    hs_plot = [5, 10, 15, 25]
+    labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
+    label_ids = range(len(labels_names))
+    for fol, subject, sms, run in utils.sms_generator(root_fol):
+        print(fol, subject, sms, run)
+        if subject not in gen:
+            gen[subject] = OrderedDict()
+        if sms not in gen[subject]:
+            gen[subject][sms] = []
+        gen[subject][sms].append((fol, run))
+        if not sim:
+            d = np.load(op.join(fol, 'labels_data_{}_{}.npz'.format(atlas, measure)))
+            data[fol] = d['data']
+        else:
+            import scipy.io as sio
+            d_sim = sio.loadmat(op.join(fol, 'fmri_timecourse_sim.mat'))
+            data[fol] = d_sim['timecourse_use_sim'].T
+
+    # labels_names = [0]
+    now = time.time()
+    for subject, (label_id, label_name) in itertools.product(gen.keys(), enumerate(labels_names)):
+        utils.time_to_go(now, label_id, len(labels_names), 5)
+        fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(12, 8))
+        axs = list(itertools.chain(*axes))
+        fig.suptitle('{} {} {}'.format(subject, label_name, 'sim' if sim else ''))
+        for index, (ax, sms) in enumerate(zip(axs, gen[subject].keys())):
+            fol, run = gen[subject][sms][0]
+            tr = utils.load(op.join(fol, 'tr.pkl'))
+            print(tr)
+            ys = np.array([data[fol][label_id]])
+            plot_vector_mean_var(subject, sms, run, ys, [label_name], [label_id], fol, tr, hs_plot, k_type, sim,
+                                 overwrite=False, ax=ax, plot_legend=index==1, xlim=None)
+
+        utils.maximize_figure(plt)
+        plt.tight_layout()
+        plt.savefig(op.join(figures_fol, label_name))
+        plt.close()
+
+
+def combine_mean_var_sim_plots(root_fol, labels_names):
+    figure_fol = op.join(root_fol, 'figures')
+    utils.make_dir(op.join(figure_fol, 'smss_per_label_compare'))
+    now = time.time()
+    for ind, label in enumerate(labels_names):
+        utils.time_to_go(now, ind, len(labels_names), 5)
+        figure_real_data = op.join(figure_fol, 'smss_per_label', '{}.png'.format(label))
+        figure_sim_data = op.join(figure_fol, 'smss_per_label_sim', '{}.png'.format(label))
+        new_image_fname = op.join(figure_fol, 'smss_per_label_compare', '{}.png'.format(label))
+        utils.combine_two_images(figure_real_data, figure_sim_data, new_image_fname, )
+
+
 def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
          sim=False, labels_names=None, labels_ids=None, only_one_trace=False, overwrite=False, n_jobs=-2):
     if only_one_trace:
@@ -466,59 +526,13 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
             print(subject, sms, run)
-            # est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=True, n_jobs=n_jobs)
-            # calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
+            est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=True, n_jobs=n_jobs)
+            calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type, sim)
 
-            est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
+            # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
             # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
-
-
-def plot_mean_var(k_type='triangular', sim=False):
-    from collections import defaultdict, OrderedDict
-    import itertools
-
-    figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window{}'.format('_sim' if sim else ''))
-    utils.make_dir(figures_fol)
-    gen = {}
-    hs_plot = [5, 10, 15, 25]
-    xlim = None #[200, 300]
-    labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
-    label_ids = range(len(labels_names))
-    for fol, subject, sms, run in utils.sms_generator(root_fol):
-        print(fol, subject, sms, run)
-        if subject not in gen:
-            gen[subject] = OrderedDict()
-        if sms not in gen[subject]:
-            gen[subject][sms] = []
-        gen[subject][sms].append((fol, run))
-
-    # labels_names = [0]
-    for subject, (label_id, label_name) in itertools.product(gen.keys(), enumerate(labels_names)):
-        fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(12, 8))
-        axs = list(itertools.chain(*axes))
-        fig.suptitle('{} {}'.format(subject, label_name))
-        for index, (ax, sms) in enumerate(zip(axs, gen[subject].keys())):
-            fol, run = gen[subject][sms][0]
-            tr = utils.load(op.join(fol, 'tr.pkl'))
-            print(tr)
-            if not sim:
-                d = np.load(op.join(fol, 'labels_data_{}_{}.npz'.format(atlas, measure)))
-                ys = d['data']
-            else:
-                import scipy.io as sio
-                d_sim = sio.loadmat(op.join(fol, 'fmri_timecourse_sim.mat'))
-                ys = d_sim['timecourse_use_sim'].T
-
-            plot_vector_mean_var(subject, sms, run, ys, [label_name], [label_id], fol, tr, hs_plot, k_type, sim,
-                                 overwrite=False, ax=ax, plot_legend=index==1, xlim=None)
-
-        utils.maximize_figure(plt)
-        plt.tight_layout()
-        plt.savefig(op.join(figures_fol, label_name))
-        plt.close()
-        return
 
 
 if __name__ == '__main__':
@@ -549,7 +563,7 @@ if __name__ == '__main__':
     labels_ids = range(len(labels_names))
 
     # plot_mean_var(k_types[0], sim)
-
+    # combine_mean_var_sim_plots(root_fol, labels_names)
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))

@@ -5,8 +5,10 @@ import numpy as np
 import subprocess
 import multiprocessing
 import pickle
+import time
 
 HEMIS = ['rh', 'lh']
+PICS_COMB_HORZ, PICS_COMB_VERT = range(2)
 
 
 def namebase(file_name):
@@ -208,3 +210,37 @@ def print_modif_time(fname):
     last_modified_date = datetime.fromtimestamp(op.getmtime(fname))
     print('{} was modified at {}, {} ago'.format(namebase(fname), last_modified_date,
                                                  datetime.now() - last_modified_date))
+
+
+def time_to_go(now, run, runs_num, runs_num_to_print=10):
+    if run % runs_num_to_print == 0 and run != 0:
+        time_took = time.time() - now
+        more_time = time_took / run * (runs_num - run)
+        print('{}/{}, {:.2f}s, {:.2f}s to go!'.format(run, runs_num, time_took, more_time))
+
+
+def combine_two_images(figure1_fname, figure2_fname, new_image_fname, comb_dim=PICS_COMB_HORZ, dpi=100,
+                       facecolor='white'):
+    from PIL import Image
+    import matplotlib.pyplot as plt
+    image1 = Image.open(figure1_fname)
+    image2 = Image.open(figure2_fname)
+    if comb_dim==PICS_COMB_HORZ:
+        new_img_width = image1.size[0] + image2.size[0]
+        new_img_height = max(image1.size[1], image2.size[1])
+    else:
+        new_img_width = max(image1.size[0], image2.size[0])
+        new_img_height = image1.size[1] + image2.size[1]
+    w, h = new_img_width / dpi, new_img_height / dpi
+    fig = plt.figure(figsize=(w, h), dpi=dpi, facecolor=facecolor)
+    fig.canvas.draw()
+    if comb_dim == PICS_COMB_HORZ:
+        ax1 = plt.subplot(121)
+        ax2 = plt.subplot(122)
+    else:
+        ax1 = plt.subplot(211)
+        ax2 = plt.subplot(212)
+    ax1.imshow(image1)
+    ax2.imshow(image2)
+    plt.savefig(new_image_fname, facecolor=fig.get_facecolor(), transparent=True)
+    plt.close()
