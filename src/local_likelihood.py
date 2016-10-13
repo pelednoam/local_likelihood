@@ -277,7 +277,7 @@ def _calc_mean_var_cl_parallel(p):
     ys, means_est, vars_est, h_l_chunk, k_type = p
     mean_cl, var_cl = {}, {}
     for h_ind, h_tr, label_ind in h_l_chunk:
-        print(h_tr)
+        # print(h_tr)
         mean_cl[(h_ind, label_ind)], var_cl[(h_ind, label_ind)] = mean_var_cl_stat(
             ys[label_ind, :], means_est[h_ind, label_ind, :], vars_est[h_ind, label_ind, :], h_tr, k_type)
     return mean_cl, var_cl
@@ -343,9 +343,9 @@ def plot_vector_mean_var(subject, sms, run, ys, names, label_ids, fol, tr, hs_pl
 
 
 def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='triangular', sim=False):
+    # if not op.isfile(input_fname):
+    #     shutil.move(op.join(fol, 'mean_var_cl_{}.npz'.format(k_type)), input_fname)
     input_fname = op.join(fol, 'mean_var_cl{}_{}.npz'.format('_sim' if sim else '', k_type))
-    if not op.isfile(input_fname):
-        shutil.move(op.join(fol, 'mean_var_cl_{}.npz'.format(k_type)), input_fname)
     d = np.load(input_fname)
     mean_cl, var_cl, hs_tr, hs_ms = d['mean_cl'], d['var_cl'], d['hs_tr'], d['hs_ms']
     for cl_vector, cl_name in zip([mean_cl + var_cl, mean_cl, var_cl], ['AIC', 'AIC_mean', 'AIC_var']):
@@ -363,11 +363,15 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
                 cl = cl[ind]
             fig = plt.figure()
             width = 0.35
-            plt.bar(ind, cl, width=width)
-            plt.xticks(ind + width / 2, hs_ms[ind])
+            # plt.bar(ind, cl, width=width)
+            plt.scatter(ind, cl, marker='o', facecolors='none')
+            # plt.xticks(ind + width / 2, hs_ms[ind])
+            plt.xlim([-0.5, len(cl) + 0.5])
             plt.title('{} {} {} {} {}{}'.format(cl_name, subject, label_name, sms, run, ' sim' if sim else ''))
             plt.xlabel('window-width (s)')
-            plt.text(ind[cl.argmin()], cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
+            # plt.text(ind[cl.argmin()], cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
+            plt.scatter(ind[cl.argmin()], cl.min(), marker='o')
+            plt.plot(ind, cl, '--')
             # utils.maximize_figure(plt)
             # plt.tight_layout()
             # plt.show()
@@ -438,6 +442,44 @@ def compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types=['trian
         figures_fol = op.join(root_fol, 'figures', 'cl_mean_comparison_figures')
         utils.make_dir(figures_fol)
         plt.savefig(op.join(figures_fol, 'vector_mean_cl_{}_{}_{}.jpg'.format(subject, sms, run)), dpi=200)
+        plt.close()
+
+
+def compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='triangular'):
+    d = np.load(op.join(fol, 'mean_var_cl_{}.npz'.format(k_type)))
+    cl_vector = d['mean_cl'] + d['var_cl']
+    hs_tr, hs_ms = d['hs_tr'], d['hs_ms']
+    d = np.load(fol, 'mean_var_cl_sim_{}.npz'.format(k_type))
+    cl_vector_sim = d['mean_cl'] + d['var_cl']
+    cl_name = 'AIC'
+    for label_ind in range(cl_vector.shape[0]):
+        cl_real = cl_vector[label_ind]
+        cl_sim = cl_vector_sim[label_ind]
+        label_name = labels_names[label_ind]
+        figs_fol = op.join(root_fol, 'figures', 'mean_var_cl_compare')
+        utils.make_dir(figs_fol)
+        fig_fname = op.join(figs_fol, '{}_{}_{}.jpg'.format(subject, sms, label_name))
+        # if op.isfile(fig_fname):
+        #     continue
+        ind = np.arange(len(hs_ms))
+        fig = plt.figure()
+        for cl, marker in zip([cl_real, cl_sim], ['o', '^']):
+            if np.any(np.isnan(cl)):
+                ind = ind[~np.isnan(cl)]
+                cl = cl[ind]
+            # plt.bar(ind, cl, width=width)
+            plt.scatter(ind, cl, marker=marker, facecolors='none')
+            # plt.text(ind[cl.argmin()], cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
+            plt.scatter(ind[cl.argmin()], cl.min(), marker='o')
+            plt.plot(ind, cl, '--')
+        plt.xlim([-0.5, len(cl_real) + 0.5])
+        plt.title('{} {} {} {} {}'.format(cl_name, subject, label_name, sms, run))
+        plt.xlabel('window-width (s)')
+
+        # utils.maximize_figure(plt)
+        # plt.tight_layout()
+        # plt.show()
+        plt.savefig(fig_fname, dpi=100)
         plt.close()
 
 
@@ -526,7 +568,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
             print(subject, sms, run)
-            est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=True, n_jobs=n_jobs)
+            # est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=True, n_jobs=n_jobs)
             calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type, sim)
 
@@ -555,7 +597,7 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = True
-    sim = True
+    sim = False
     n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
 
@@ -571,6 +613,7 @@ if __name__ == '__main__':
         main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
              labels_ids, only_one_trace, overwrite, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
+        # compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_types[0])
 
 
 
