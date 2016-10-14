@@ -2,7 +2,7 @@ import os.path as op
 import numpy as np
 import shutil
 import matplotlib.pyplot as plt
-
+import itertools
 from src import utils
 import time
 
@@ -449,33 +449,38 @@ def compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='
     d = np.load(op.join(fol, 'mean_var_cl_{}.npz'.format(k_type)))
     cl_vector = d['mean_cl'] + d['var_cl']
     hs_tr, hs_ms = d['hs_tr'], d['hs_ms']
-    d = np.load(fol, 'mean_var_cl_sim_{}.npz'.format(k_type))
-    cl_vector_sim = d['mean_cl'] + d['var_cl']
+    d_sim = np.load(op.join(fol, 'mean_var_cl_sim_{}.npz'.format(k_type)))
+    cl_vector_sim = d_sim['mean_cl'] + d_sim['var_cl']
+    hs_tr_sim, hs_ms_sim = d['hs_tr'], d['hs_ms']
     cl_name = 'AIC'
+    # fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(12, 8))
+    # axs = list(itertools.chain(*axes))
     for label_ind in range(cl_vector.shape[0]):
+        fig = plt.figure()
         cl_real = cl_vector[label_ind]
         cl_sim = cl_vector_sim[label_ind]
         label_name = labels_names[label_ind]
-        figs_fol = op.join(root_fol, 'figures', 'mean_var_cl_compare')
+        figs_fol = op.join(root_fol, 'figures', 'mean_var_cl_compare', label_name)
         utils.make_dir(figs_fol)
         fig_fname = op.join(figs_fol, '{}_{}_{}.jpg'.format(subject, sms, label_name))
         # if op.isfile(fig_fname):
         #     continue
-        ind = np.arange(len(hs_ms))
-        fig = plt.figure()
-        for cl, marker in zip([cl_real, cl_sim], ['o', '^']):
+        ind_real = np.arange(len(hs_ms))
+        ind_sim = np.arange(len(hs_ms_sim))
+        for cl, marker, ind, label in zip([cl_real, cl_sim], ['o', '^'], [ind_real, ind_sim], ['real', 'sim']):
             if np.any(np.isnan(cl)):
                 ind = ind[~np.isnan(cl)]
                 cl = cl[ind]
             # plt.bar(ind, cl, width=width)
-            plt.scatter(ind, cl, marker=marker, facecolors='none')
+            plt.scatter(ind, cl, marker=marker, facecolors='none', label=label)
+        plt.legend()
+        for cl, ind in zip([cl_real, cl_sim], [ind_real, ind_sim]):
             # plt.text(ind[cl.argmin()], cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
             plt.scatter(ind[cl.argmin()], cl.min(), marker='o')
             plt.plot(ind, cl, '--')
         plt.xlim([-0.5, len(cl_real) + 0.5])
         plt.title('{} {} {} {} {}'.format(cl_name, subject, label_name, sms, run))
         plt.xlabel('window-width (s)')
-
         # utils.maximize_figure(plt)
         # plt.tight_layout()
         # plt.show()
@@ -540,7 +545,19 @@ def combine_mean_var_sim_plots(root_fol, labels_names):
         figure_real_data = op.join(figure_fol, 'smss_per_label', '{}.png'.format(label))
         figure_sim_data = op.join(figure_fol, 'smss_per_label_sim', '{}.png'.format(label))
         new_image_fname = op.join(figure_fol, 'smss_per_label_compare', '{}.png'.format(label))
-        utils.combine_two_images(figure_real_data, figure_sim_data, new_image_fname, )
+        utils.combine_two_images(figure_real_data, figure_sim_data, new_image_fname)
+
+
+def combine_mean_var_cl_sim_plots(root_fol, labels_names):
+    import glob
+    import os
+    figure_fol = op.join(root_fol, 'figures', 'mean_var_cl_compare')
+    # utils.make_dir(op.join(figure_fol, 'smss_per_label_compare'))
+    now = time.time()
+    for ind, label in enumerate(labels_names):
+        utils.time_to_go(now, ind, len(labels_names), 5)
+        figs = sorted(glob.glob(op.join(figure_fol, label, '*.jpg')))
+        utils.combine_four_images(figs, op.join(figure_fol, '{}.png'.format(label)))
 
 
 def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
@@ -569,7 +586,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
         else:
             print(subject, sms, run)
             # est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=True, n_jobs=n_jobs)
-            calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
+            # calc_mean_var_cl(ys, fol, hs_tr, k_type=k_type, sim=sim, overwrite=True, n_jobs=n_jobs)
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type, sim)
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
@@ -604,17 +621,18 @@ if __name__ == '__main__':
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
     labels_ids = range(len(labels_names))
 
-    # plot_mean_var(k_types[0], sim)
-    # combine_mean_var_sim_plots(root_fol, labels_names)
     for fol, subject, sms, run in utils.sms_generator(root_fol):
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print (tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-             labels_ids, only_one_trace, overwrite, n_jobs=n_jobs)
+        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+        #      labels_ids, only_one_trace, overwrite, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
         # compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_types[0])
 
+    # plot_mean_var(k_types[0], sim)
+    # combine_mean_var_sim_plots(root_fol, labels_names)
+    combine_mean_var_cl_sim_plots(root_fol, labels_names)
 
 
     print('Finish!')
