@@ -147,7 +147,7 @@ def sms_generator(root_fol, subjects=()):
                     continue
                 sms = namebase(sms_fol)
                 subject = namebase(subject_fol)
-                print(subject, sms, run)
+                # print(subject, sms, run)
                 yield run_fol, subject, sms, run
 
 
@@ -262,6 +262,31 @@ def combine_four_images(figs, new_image_fname, dpi=100,
     # axs = list(itertools.chain(*axes))
     fig = plt.figure(figsize=(w, h), dpi=dpi, facecolor=facecolor)
     gs = gridspec.GridSpec(2, 2)
+    gs.update(wspace=0, hspace=0)  # set the spacing between axes.
+
+    for g, image in zip(gs, images):
+        ax = plt.subplot(g)
+        ax.imshow(image)
+        ax.axis('off')
+    plt.savefig(new_image_fname, facecolor=fig.get_facecolor(), transparent=True, bbox_inches='tight')
+    plt.close()
+    return new_image_fname
+
+
+def combine_nine_images(figs, new_image_fname, dpi=100, facecolor='white'):
+    from PIL import Image
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+
+    images = [Image.open(fig) for fig in figs]
+    new_img_width =  images[0].size[0] + images[1].size[0] + images[2].size[0]
+    new_img_height = images[0].size[1] + images[3].size[1] + images[6].size[1]
+    w, h = new_img_width / dpi, new_img_height / dpi
+    # fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(w, h), dpi=dpi, facecolor=facecolor)
+    # fig.canvas.draw()
+    # axs = list(itertools.chain(*axes))
+    fig = plt.figure(figsize=(w, h), dpi=dpi, facecolor=facecolor)
+    gs = gridspec.GridSpec(3, 3)
     gs.update(wspace=0, hspace=0)  # set the spacing between axes.
 
     for g, image in zip(gs, images):
