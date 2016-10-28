@@ -94,6 +94,7 @@ def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, m
 
 
 def calc_cov_and_power_spectrum(fol, aparc_name, tr, measure='PCA'):
+    print('Calculating cov and pxx')
     input_fname = op.join(fol, 'labels_data_{}_{}.npz'.format(aparc_name, measure))
     output_fname = op.join(fol, 'cov_pxx_{}_{}.npz'.format(aparc_name, measure))
     d = np.load(input_fname)
@@ -180,7 +181,7 @@ if __name__ == '__main__':
     # sms = '3mm_SMS1_pa'
     # run = '006'
     root_fol = utils.existing_fol(
-        ['/home/noam/vic', '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
+        ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
     hemi = 'lh'
     local_subjects_dir = os.environ['SUBJECTS_DIR']
 
@@ -190,6 +191,8 @@ if __name__ == '__main__':
     measure = 'PCA'
 
     for fol, subject, sms, run in utils.sms_generator(root_fol):
+        if subject != 'nmr00960':
+            continue
         image_name = convert_fmri_file(op.join(fol, volume_fname_template), 'nii.gz', 'mgz')
         tr = get_tr(image_name)
         # morph_labels_to_all_vertices(fsaverage, aparc_name, subjects_dir, hemi, n_jobs, local_subjects_dir=local_subjects_dir)
