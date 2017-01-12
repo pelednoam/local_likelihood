@@ -2,7 +2,7 @@ import os.path as op
 import numpy as np
 import shutil
 import matplotlib.pyplot as plt
-import itertools
+from functools import partial
 from src import utils
 import time
 
@@ -108,6 +108,35 @@ def vector_mean_cl_stat(ys, mues, h, k_type='triangular'):
     # C_L = (1 / n) * sum([(ys[:, k] - mues[:, k]) / var for k in range(n)]) + \
     #        2 * d * trM / n
     return C_L
+
+
+def eit(ys, mues, k):
+    return ys[:, k] - mues[:, k]
+
+
+def sum_eit(ys, mues, n):
+    return sum([eit(ys, mues, k) for k in range(n)])
+
+
+def sum_Kit(t, n, h, k_type='triangular'):
+    return sum([K(j, t, h, k_type) for j in range(n)])
+
+
+def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
+    n = ys.shape[1]
+    d = ys.shape[0]
+    K0 = K_func(0, k_type)
+    _eit = partial(eit, ys=ys, mues=mues)
+    _est_var = partial(vector_est_var_t, ys=ys, mues=mues, h=h, n=n, k_type=k_type)
+    _sum_Kit = partial(sum_Kit, n=n, h=h, k_type=k_type)
+
+    AIC_mue = (1 / n) * sum([_eit(k) * 1 / _est_var(k) * _eit(k) for k in range(n)]) + \
+        (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
+
+    AIC_var = (1/ n) * sum([np.log(abs(_est_var(k))) for k in range(n)]) + \
+              (K0 / n) * sum([pow(_eit(k) * 1 / _est_var(k) * _eit(k), 2) / _sum_Kit(k) for k in range(n)])
+
+    return AIC_mue + AIC_var
 
 
 def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
@@ -270,6 +299,34 @@ def _calc_vector_mean_cl_parallel(p):
     for h_ind, h_tr in h_chunk:
         mean_cl[h_ind] = vector_mean_cl_stat(ys, means_est[h_ind], h_tr, k_type)
     return mean_cl
+
+
+def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, overwrite=False, n_jobs=1):
+    output_fname = op.join(fol, 'vector_mean_cl_cov{}_{}.npz'.format('_sim' if sim else '', k_type))
+    if op.isfile(output_fname) and not overwrite:
+        d = np.load(output_fname)
+        if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
+            overwrite = True
+    if not op.isfile(output_fname) or overwrite:
+        d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
+        means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
+        mean_cl, var_cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr)))
+
+        h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
+        params = [(ys, means_est, h_chunk, k_type) for h_chunk in h_chunks]
+        results = utils.run_parallel(_calc_vector_mean_and_cov_cl_parallel, params, n_jobs)
+        for chunk_mean_cl in results:
+            for h_ind in chunk_mean_cl.keys():
+                mean_cl[h_ind] = chunk_mean_cl[h_ind]
+        np.savez(output_fname, mean_cl=mean_cl, var_cl=var_cl, hs_tr=hs_tr, hs_ms=hs_ms)
+
+
+def _calc_vector_mean_and_cov_cl_parallel(p):
+    ys, means_est, h_chunk, k_type = p
+    mean_cov_cl = {}
+    for h_ind, h_tr in h_chunk:
+        mean_cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est[h_ind], h_tr, k_type)
+    return mean_cov_cl
 
 
 def calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type='triangular', sim=False, overwrite=False,
@@ -694,14 +751,15 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
             print(subject, sms, run)
-            est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=overwrite,
-                             specific_label=specific_label, n_jobs=n_jobs)
-            calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type=k_type, sim=sim, overwrite=overwrite,
-                             specific_label=specific_label, n_jobs=n_jobs)
+            # est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=overwrite,
+            #                  specific_label=specific_label, n_jobs=n_jobs)
+            # calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type=k_type, sim=sim, overwrite=overwrite,
+            #                  specific_label=specific_label, n_jobs=n_jobs)
             # plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type, sim)
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
+            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
             # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
 
 
@@ -750,8 +808,8 @@ if __name__ == '__main__':
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
@@ -762,8 +820,8 @@ if __name__ == '__main__':
         if subject != 'nmr00956':
             continue
         # merge_mean_var_cl_files(fol, hs_to_compare, k_types[0])
-        compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, hs_to_compare, top_hs, labels_ids,
-                            hs, k_types[0])
+        # compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, hs_to_compare, top_hs, labels_ids,
+        #                     hs, k_types[0])
         pass
 
 
