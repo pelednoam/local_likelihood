@@ -126,9 +126,9 @@ def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     n = ys.shape[1]
     d = ys.shape[0]
     K0 = K_func(0, k_type)
-    _eit = partial(eit, ys=ys, mues=mues)
-    _est_var = partial(vector_est_var_t, ys=ys, mues=mues, h=h, n=n, k_type=k_type)
-    _sum_Kit = partial(sum_Kit, n=n, h=h, k_type=k_type)
+    _eit = lambda k:eit(ys, mues, k)
+    _est_var = lambda k:vector_est_var_t(ys, mues, k, h, n, k_type)
+    _sum_Kit = lambda k:sum_Kit(k, n, h, k_type)
 
     AIC_mue = (1 / n) * sum([_eit(k) * 1 / _est_var(k) * _eit(k) for k in range(n)]) + \
         (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
@@ -136,7 +136,7 @@ def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     AIC_var = (1/ n) * sum([np.log(abs(_est_var(k))) for k in range(n)]) + \
               (K0 / n) * sum([pow(_eit(k) * 1 / _est_var(k) * _eit(k), 2) / _sum_Kit(k) for k in range(n)])
 
-    return AIC_mue + AIC_var
+    return AIC_mue, AIC_var
 
 
 def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
@@ -302,7 +302,7 @@ def _calc_vector_mean_cl_parallel(p):
 
 
 def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, overwrite=False, n_jobs=1):
-    output_fname = op.join(fol, 'vector_mean_cl_cov{}_{}.npz'.format('_sim' if sim else '', k_type))
+    output_fname = op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type))
     if op.isfile(output_fname) and not overwrite:
         d = np.load(output_fname)
         if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
@@ -310,23 +310,26 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
     if not op.isfile(output_fname) or overwrite:
         d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
         means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
-        mean_cl, var_cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr)))
+        mean_cl, cov_cl, cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr))),  np.zeros((len(hs_tr)))
 
         h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
         params = [(ys, means_est, h_chunk, k_type) for h_chunk in h_chunks]
         results = utils.run_parallel(_calc_vector_mean_and_cov_cl_parallel, params, n_jobs)
-        for chunk_mean_cl in results:
+        for chunk_mean_cl, chunk_cov_cl, chunk_cl in results:
             for h_ind in chunk_mean_cl.keys():
                 mean_cl[h_ind] = chunk_mean_cl[h_ind]
-        np.savez(output_fname, mean_cl=mean_cl, var_cl=var_cl, hs_tr=hs_tr, hs_ms=hs_ms)
+                cov_cl[h_ind] = chunk_cov_cl[h_ind]
+                cl[h_ind] = chunk_cl[h_ind]
+        np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr, hs_ms=hs_ms)
 
 
 def _calc_vector_mean_and_cov_cl_parallel(p):
     ys, means_est, h_chunk, k_type = p
-    mean_cov_cl = {}
+    mean_cl, cov_cl, cl = {}, {}, {}
     for h_ind, h_tr in h_chunk:
-        mean_cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est[h_ind], h_tr, k_type)
-    return mean_cov_cl
+        mean_cl[h_ind], cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est[h_ind], h_tr, k_type)
+        cl[h_ind] = mean_cl[h_ind] + cov_cl[h_ind]
+    return mean_cl, cov_cl, cl
 
 
 def calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type='triangular', sim=False, overwrite=False,
@@ -464,8 +467,8 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
 
 
 def plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type='triangular', sim=False):
-    d = np.load(op.join(fol, 'vector_mean_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
-    mean_cl, var_cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
+    d = np.load(op.join(fol, 'vector_mean_var_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
+    cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
     # for cl, cl_name in zip([mean_cl, var_cl], ['AIC mean', 'AIC var']):
     for cl, cl_name in zip([mean_cl], ['AIC mean']):
         fig = plt.figure()
@@ -767,8 +770,9 @@ if __name__ == '__main__':
     # subject = 'nmr00956'
     fsaverage = 'fsaverage'
     root_fol = utils.existing_fol(
-        ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
-    root_fol = '/homes/5/npeled/space1/vic'
+        ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func',
+         '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\'])
+    # root_fol = '/homes/5/npeled/space1/vic'
     hemi = 'lh'
     atlas = 'aparc' # 'laus250'
     measure = 'PCA'
@@ -791,7 +795,7 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = False
-    sim = True
+    sim = False
     n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
