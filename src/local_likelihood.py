@@ -126,11 +126,14 @@ def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     n = ys.shape[1]
     d = ys.shape[0]
     K0 = K_func(0, k_type)
+
+    if mues is None:
+        mues = np.array([vector_mean_ll(ys, k, h, n, k_type) for k in range(n)]).T
+
     _eit = lambda k:eit(ys, mues, k)
     _est_var = lambda k:vector_est_var_t(ys, mues, k, h, n, k_type)
     _sum_Kit = lambda k:sum_Kit(k, n, h, k_type)
 
-    # mues = np.array([vector_mean_ll(ys, k, h, n, k_type) for k in range(n)]).T
     AIC_mue = (1 / n) * sum([_eit(k).T * (1 / _est_var(k)) @ _eit(k) for k in range(n)]) + \
         (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
 
@@ -309,8 +312,9 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
         if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
-        d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
-        means_est = d['means'] #, d['hs_tr'], d['hs_ms']
+        # d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
+        # means_est = d['means'] #, d['hs_tr'], d['hs_ms']
+        means_est = None
         mean_cl, cov_cl, cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr))),  np.zeros((len(hs_tr)))
 
         h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
@@ -329,7 +333,8 @@ def _calc_vector_mean_and_cov_cl_parallel(p):
     mean_cl, cov_cl, cl = {}, {}, {}
     for h_ind, h_tr in h_chunk:
         print(h_ind)
-        mean_cl[h_ind], cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est[h_ind], h_tr, k_type)
+        means_est_h_ind = None if means_est is None else means_est[h_ind]
+        mean_cl[h_ind], cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est_h_ind, h_tr, k_type)
         cl[h_ind] = mean_cl[h_ind] + cov_cl[h_ind]
     return mean_cl, cov_cl, cl
 
@@ -767,8 +772,8 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
-            # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
+            # calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
+            plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
 
 
 if __name__ == '__main__':
@@ -801,7 +806,7 @@ if __name__ == '__main__':
     # utils.make_dir(figures_fol)
     overwrite = False
     sim = False
-    n_jobs = -1
+    n_jobs = 1
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
