@@ -80,7 +80,7 @@ def vector_mean_ll(ys, k, h, n, k_type='triangular'):
 
 
 def vector_est_var_t(ys, mues, k, h, n, k_type='triangular'):
-    nom = sum([K(i, k, h, k_type) * (ys[:, i] - mues[:, i])*(ys[:, i] - mues[:, i]).T for i in range(n)])
+    nom = sum([K(i, k, h, k_type) * (ys[:, i] - mues[:, i]) @ (ys[:, i] - mues[:, i]).T for i in range(n)])
     dom = sum([K(i, k, h, k_type) for i in range(n)])
     return nom / dom
 
@@ -130,11 +130,12 @@ def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     _est_var = lambda k:vector_est_var_t(ys, mues, k, h, n, k_type)
     _sum_Kit = lambda k:sum_Kit(k, n, h, k_type)
 
-    AIC_mue = (1 / n) * sum([_eit(k) * 1 / _est_var(k) * _eit(k) for k in range(n)]) + \
+    # mues = np.array([vector_mean_ll(ys, k, h, n, k_type) for k in range(n)]).T
+    AIC_mue = (1 / n) * sum([_eit(k).T * (1 / _est_var(k)) @ _eit(k) for k in range(n)]) + \
         (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
 
     AIC_var = (1/ n) * sum([np.log(abs(_est_var(k))) for k in range(n)]) + \
-              (K0 / n) * sum([pow(_eit(k) * 1 / _est_var(k) * _eit(k), 2) / _sum_Kit(k) for k in range(n)])
+              (K0 / n) * sum([pow(_eit(k).T * 1 / _est_var(k) @ _eit(k), 2) / _sum_Kit(k) for k in range(n)])
 
     return AIC_mue, AIC_var
 
@@ -309,7 +310,7 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
         d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
-        means_est, vars_est, hs_tr, hs_ms = d['means'], d['vars'], d['hs_tr'], d['hs_ms']
+        means_est, hs_tr, hs_ms = d['means'], d['hs_tr'], d['hs_ms']
         mean_cl, cov_cl, cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr))),  np.zeros((len(hs_tr)))
 
         h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
@@ -762,7 +763,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
+            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
             # plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
 
 
@@ -771,7 +772,7 @@ if __name__ == '__main__':
     fsaverage = 'fsaverage'
     root_fol = utils.existing_fol(
         ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func',
-         '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\'])
+         '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\', '/home/npeled/vic/'])
     # root_fol = '/homes/5/npeled/space1/vic'
     hemi = 'lh'
     atlas = 'aparc' # 'laus250'
