@@ -2,7 +2,7 @@ import os.path as op
 import numpy as np
 import shutil
 import matplotlib.pyplot as plt
-from functools import partial
+import itertools
 from src import utils
 import time
 
@@ -157,6 +157,23 @@ def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
              (1 / n) * sum([(2 * K0 * pow(y[t] - mue[t], 4)) /
                             (sum([K(j, t, h, k_type) for j in range(n)]) * pow(var[t], 2)) for t in range(n)])
     return CL_mean, CL_var
+
+
+def vector_mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
+    if np.all(var == 0):
+        return np.nan, np.nan
+    n = len(y)
+    K0 = K_func(0, k_type)
+    # const_var = np.var(y)
+    # trM = calc_tr_M(n, h, k_type) #  = nK(0) / sum(K[(t_j - t_i) / h]) = nK(0) / sum(K_j,t_i)
+    # CL_mean = (1 / n) * sum([np.power(y[k] - mue[k], 2) / const_var for k in range(n)]) + \
+    CL_mean = (1 / n) * sum([pow(y[t] - mue[t], 2) / var[t] for t in range(n)]) + \
+              (1 / n) * sum([2 * K0 / sum([K(j, t, h, k_type) for j in range(n)]) for t in range(n)])
+    CL_var = (1 / n) * sum([np.log(var[t]) for t in range(n)]) + \
+             (1 / n) * sum([(2 * K0 * pow(y[t] - mue[t], 4)) /
+                            (sum([K(j, t, h, k_type) for j in range(n)]) * pow(var[t], 2)) for t in range(n)])
+    return CL_mean, CL_var
+
 
 
 def est_vector_mean_ll(ys, h, k_type='triangular'):
@@ -473,34 +490,40 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
             plt.close()
 
 
-def plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type='triangular', sim=False):
-    # d = np.load(op.join(fol, 'vector_mean_var_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
+def plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=False, subplot=False, ax=None,
+                         write_x_label=True):
     d = np.load(op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
-    # np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr, hs_ms=hs_ms)
-    # cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
-    mean_cl, col_cl, cl, hs_ms = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_ms']
-    # for cl, cl_name in zip([mean_cl, var_cl], ['AIC mean', 'AIC var']):
+    mean_cl, col_cl, cl, hs_tr = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_tr']
+    # for cl, cl_name in zip([mean_cl, col_cl, cl], ['AIC mean', 'AIC cov', 'AIC']):
     for cl, cl_name in zip([cl], ['AIC']):
-        fig = plt.figure()
-        width = 0.35
-        ind = np.arange(len(hs_ms))
-        # plt.bar(ind, cl, width=width)
-        plt.scatter(ind, cl, marker='o', facecolors='none')
-        # plt.xticks(ind + width / 2, hs_ms)
-        plt.title('{} {} {} {}{}'.format(cl_name, subject, sms, run, ' sim' if sim else ''))
-        plt.xlabel('window-width (s)')
+        if not subplot:
+            fig, ax = plt.subplot()
+        ind = np.arange(len(hs_tr))
+        ax.scatter(ind, cl, s=1, facecolors='none')
+        if write_x_label:
+            ax.set_xlabel('window-width (s)')
         # plt.text(cl.argmin(), cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
-        plt.scatter(cl.argmin(), cl.min(), marker='o')
-        plt.xlim([-0.5, len(cl) + 0.5])
-        utils.maximize_figure(plt)
-        plt.tight_layout()
+        cl_argmin, cl_min = cl.argmin(), cl.min()
+        if cl_argmin > 0:
+            ax.scatter(cl_argmin, cl_min, marker='o', s=30)
+        ax.set_xlim([-0.5, len(cl) + 0.5])
+        if subplot:
+            ax.set_title('{} {}'.format(sms.replace('_', ' '), '({}s)'.format(cl_argmin) if cl_argmin > 0 else '(no AIC min)'))
+        if not subplot:
+            title = '{} {} {} {}{} {}'.format(
+                cl_name, subject, sms, run, ' sim' if sim else '',
+                'best window length: {}s'.format(cl_argmin) if cl_argmin > 0 else 'no AIC min')
+            print(title)
+            plt.title(title)
+            utils.maximize_figure(plt)
+            plt.tight_layout()
+            figures_fol = op.join(root_fol, 'figures', 'mean_cov_figures{}'.format('_sim' if sim else ''))
+            utils.make_dir(figures_fol)
+            plt.savefig(op.join(figures_fol, 'vector_{}_{}_{}_{}{}.jpg'.format(
+                cl_name.replace(' ', '_'), subject, run, sms, '_sim' if sim else '')), dpi=200)
+            plt.close()
         # plt.show()
-        figures_fol = op.join(root_fol, 'figures', 'cl_mean_figures{}'.format('_sim' if sim else ''))
-        utils.make_dir(figures_fol)
-        plt.savefig(op.join(figures_fol, 'vector_mean_cl_{}_{}_{}{}.jpg'.format(
-            subject, run, sms, '_sim' if sim else '')), dpi=200)
-        plt.close()
-        # plt.show()
+
 
 def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangular'):
     utils.make_dir(op.join(root_fol, 'mean_var_figures'))
@@ -738,6 +761,31 @@ def combine_mean_var_cl_sim_plots(root_fol, subject, labels_names, hs):
             utils.combine_nine_images(figs, op.join(figure_fol, '{}.png'.format(label)))
 
 
+def plot_vector_mean_cov_summary(root_fol, sim=False):
+    subjects = utils.get_subjects(root_fol)
+    figures_fol = op.join(root_fol, 'figures')
+    runs = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '016', '3mm_SMS4_ipat2_pa': '012', '3mm_SMS8_pa': '004'}
+    ylims = {'3mm_SMS1_pa': [10, 20], '3mm_SMS4_ipat1_pa': [10, 20], '3mm_SMS4_ipat2_pa': [10, 14], '3mm_SMS8_pa': [10, 14]}
+    for subject in subjects:
+        fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(12, 8))
+        axs = list(itertools.chain(*axes))
+        for ind, ((fol, _, sms, run), ax) in enumerate(zip(utils.sms_generator(root_fol, [subject], runs), axs)):
+            plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=sim, subplot=True, ax=ax,
+                                 write_x_label=ind > 1)
+            ax.set_ylim(ylims[sms])
+            if ind < 2:
+                ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 2))
+            else:
+                ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
+            ax.set_xlim([0, 200])
+        utils.maximize_figure(plt)
+        plt.tight_layout()
+        output_fname = op.join(figures_fol, '{}{}_vector_mean_cov_summary.jpg'.format(
+            utils.namebase(subject), '_sim' if sim else ''))
+        print('Writing to {}'.format(output_fname))
+        plt.savefig(output_fname, dpi=200)
+
+
 def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=['triangular'], measure='PCA',
          sim=False, labels_names=None, labels_ids=None, only_one_trace=False, overwrite=False,
          specific_label='', n_jobs=-2):
@@ -773,14 +821,15 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
             # calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
-            plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type, sim)
+            plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type, sim)
 
 
 if __name__ == '__main__':
     # subject = 'nmr00956'
     fsaverage = 'fsaverage'
+    # '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func',
     root_fol = utils.existing_fol(
-        ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func',
+        ['/home/noam/vic',
          '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\', '/home/npeled/vic/'])
     # root_fol = '/homes/5/npeled/space1/vic'
     hemi = 'lh'
@@ -822,9 +871,12 @@ if __name__ == '__main__':
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
+
+    plot_vector_mean_cov_summary(root_fol)
+
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
     labels_ids = np.where(labels_names == label)[0]

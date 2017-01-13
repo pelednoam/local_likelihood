@@ -6,6 +6,7 @@ import subprocess
 import multiprocessing
 import pickle
 import time
+import glob
 
 HEMIS = ['rh', 'lh']
 PICS_COMB_HORZ, PICS_COMB_VERT = range(2)
@@ -132,10 +133,13 @@ def get_n_jobs(n_jobs):
     return n_jobs
 
 
-def sms_generator(root_fol, subjects=()):
-    import glob
+def get_subjects(root_fol):
+    return glob.glob(op.join(root_fol, 'nmr*'))
+
+
+def sms_generator(root_fol, subjects=(), runs_dic=None):
     if len(subjects) == 0:
-        subjects = glob.glob(op.join(root_fol, 'nmr*'))
+        subjects = get_subjects(root_fol)
     for subject_fol in subjects:
         smss = sorted(glob.glob(op.join(subject_fol, '3mm_SMS*')))
         # smss = ['3mm_SMS1_pa', '3mm_SMS4_ipat1_pa', '3mm_SMS4_ipat2_pa', '3mm_SMS8_pa']
@@ -147,6 +151,9 @@ def sms_generator(root_fol, subjects=()):
                     continue
                 sms = namebase(sms_fol)
                 subject = namebase(subject_fol)
+                if not runs_dic is None:
+                    if runs_dic[sms] != run:
+                        continue
                 # print(subject, sms, run)
                 yield run_fol, subject, sms, run
 
