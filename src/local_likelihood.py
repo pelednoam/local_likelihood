@@ -310,7 +310,7 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
             overwrite = True
     if not op.isfile(output_fname) or overwrite:
         d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
-        means_est, hs_tr, hs_ms = d['means'], d['hs_tr'], d['hs_ms']
+        means_est = d['means'] #, d['hs_tr'], d['hs_ms']
         mean_cl, cov_cl, cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr))),  np.zeros((len(hs_tr)))
 
         h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
@@ -321,13 +321,14 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
                 mean_cl[h_ind] = chunk_mean_cl[h_ind]
                 cov_cl[h_ind] = chunk_cov_cl[h_ind]
                 cl[h_ind] = chunk_cl[h_ind]
-        np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr, hs_ms=hs_ms)
+        np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr)
 
 
 def _calc_vector_mean_and_cov_cl_parallel(p):
     ys, means_est, h_chunk, k_type = p
     mean_cl, cov_cl, cl = {}, {}, {}
     for h_ind, h_tr in h_chunk:
+        print(h_ind)
         mean_cl[h_ind], cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est[h_ind], h_tr, k_type)
         cl[h_ind] = mean_cl[h_ind] + cov_cl[h_ind]
     return mean_cl, cov_cl, cl
@@ -468,10 +469,13 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
 
 
 def plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type='triangular', sim=False):
-    d = np.load(op.join(fol, 'vector_mean_var_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
-    cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
+    # d = np.load(op.join(fol, 'vector_mean_var_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
+    d = np.load(op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
+    # np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr, hs_ms=hs_ms)
+    # cl, hs_ms = d['mean_cl'], d['var_cl'], d['hs_ms']
+    mean_cl, col_cl, cl, hs_ms = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_ms']
     # for cl, cl_name in zip([mean_cl, var_cl], ['AIC mean', 'AIC var']):
-    for cl, cl_name in zip([mean_cl], ['AIC mean']):
+    for cl, cl_name in zip([cl], ['AIC']):
         fig = plt.figure()
         width = 0.35
         ind = np.arange(len(hs_ms))
@@ -491,7 +495,7 @@ def plot_vector_mean_var_cl(fol, root_fol, subject, sms, run, k_type='triangular
         plt.savefig(op.join(figures_fol, 'vector_mean_cl_{}_{}_{}{}.jpg'.format(
             subject, run, sms, '_sim' if sim else '')), dpi=200)
         plt.close()
-
+        # plt.show()
 
 def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangular'):
     utils.make_dir(op.join(root_fol, 'mean_var_figures'))
@@ -754,7 +758,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
         if only_one_trace:
             plot_mean_var(y, hs_s, fol, k_type=k_type)
         else:
-            print(subject, sms, run)
+            # print(subject, sms, run)
             # est_mean_and_var(ys, labels_names, hs_tr, hs_s, t_axis, fol, k_type, sim, overwrite=overwrite,
             #                  specific_label=specific_label, n_jobs=n_jobs)
             # calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type=k_type, sim=sim, overwrite=overwrite,
