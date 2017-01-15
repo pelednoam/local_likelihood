@@ -492,37 +492,46 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
 
 def plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=False, subplot=False, ax=None,
                          write_x_label=True):
-    d = np.load(op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type)))
+    input_fname = op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type))
+    if not op.isfile(input_fname):
+        print("Can't find {}!".format(input_fname))
+        return
+    print('Loading {}'.format(input_fname))
+    d = np.load(input_fname)
     mean_cl, col_cl, cl, hs_tr = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_tr']
     # for cl, cl_name in zip([mean_cl, col_cl, cl], ['AIC mean', 'AIC cov', 'AIC']):
     for cl, cl_name in zip([cl], ['AIC']):
         if not subplot:
-            fig, ax = plt.subplot()
+            fig = plt.figure()
+            ax = plt.subplot()
         ind = np.arange(len(hs_tr))
         ax.scatter(ind, cl, s=1, facecolors='none')
         if write_x_label:
             ax.set_xlabel('window-width (s)')
         # plt.text(cl.argmin(), cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
         cl_argmin, cl_min = cl.argmin(), cl.min()
-        if cl_argmin > 0:
+        cl_min_exist = 0 < cl_argmin < len(cl) - 1
+        if cl_min_exist:
             ax.scatter(cl_argmin, cl_min, marker='o', s=30)
         ax.set_xlim([-0.5, len(cl) + 0.5])
         if subplot:
-            ax.set_title('{} {}'.format(sms.replace('_', ' '), '({}s)'.format(cl_argmin) if cl_argmin > 0 else '(no AIC min)'))
+            ax.set_title('{} {}'.format(sms.replace('_', ' '), '({}s)'.format(cl_argmin) if cl_min_exist else '(no AIC min)'))
         if not subplot:
-            title = '{} {} {} {}{} {}'.format(
-                cl_name, subject, sms, run, ' sim' if sim else '',
-                'best window length: {}s'.format(cl_argmin) if cl_argmin > 0 else 'no AIC min')
+            title = '{} {} {}{} {}'.format(
+                cl_name, sms, run, ' sim' if sim else '',
+                'best window length: {}s'.format(cl_argmin) if cl_min_exist else '(no AIC min)')
             print(title)
             plt.title(title)
             utils.maximize_figure(plt)
             plt.tight_layout()
             figures_fol = op.join(root_fol, 'figures', 'mean_cov_figures{}'.format('_sim' if sim else ''))
             utils.make_dir(figures_fol)
-            plt.savefig(op.join(figures_fol, 'vector_{}_{}_{}_{}{}.jpg'.format(
-                cl_name.replace(' ', '_'), subject, run, sms, '_sim' if sim else '')), dpi=200)
+            figure_fname = op.join(figures_fol, 'vector_{}_{}_{}_{}{}.jpg'.format(
+                cl_name.replace(' ', '_'), subject, run, sms, '_sim' if sim else ''))
+            print('Saving the figure {}'.format(figure_fname))
+            plt.savefig(figure_fname, dpi=200)
             plt.close()
-        # plt.show()
+            # plt.show()
 
 
 def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangular'):
@@ -772,11 +781,14 @@ def plot_vector_mean_cov_summary(root_fol, sim=False):
         for ind, ((fol, _, sms, run), ax) in enumerate(zip(utils.sms_generator(root_fol, [subject], runs), axs)):
             plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=sim, subplot=True, ax=ax,
                                  write_x_label=ind > 1)
-            ax.set_ylim(ylims[sms])
-            if ind < 2:
-                ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 2))
+            if not sim:
+                ax.set_ylim(ylims[sms])
+                if ind < 2:
+                    ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 2))
+                else:
+                    ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
             else:
-                ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
+                ax.set_ylim([10, 20])
             ax.set_xlim([0, 200])
         utils.maximize_figure(plt)
         plt.tight_layout()
@@ -854,7 +866,7 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = False
-    sim = False
+    sim = True
     n_jobs = 1
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
@@ -875,7 +887,7 @@ if __name__ == '__main__':
         #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-    plot_vector_mean_cov_summary(root_fol)
+    plot_vector_mean_cov_summary(root_fol, sim)
 
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
