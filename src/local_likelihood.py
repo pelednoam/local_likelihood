@@ -870,7 +870,7 @@ if __name__ == '__main__':
     # utils.make_dir(figures_fol)
     overwrite = False
     sim = False
-    n_jobs = -1
+    n_jobs = 0
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
