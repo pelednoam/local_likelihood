@@ -868,7 +868,7 @@ if __name__ == '__main__':
     # labels_names = ['posteriorcingulate-lh']
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
-    overwrite = False
+    overwrite = True
     sim = False
     n_jobs = 0
     n_jobs = utils.get_n_jobs(n_jobs)
