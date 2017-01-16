@@ -835,7 +835,7 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
+            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type, sim)
 
 
