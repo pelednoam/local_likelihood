@@ -134,13 +134,13 @@ def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     _est_var = lambda k:vector_est_var_t(ys, mues, k, h, n, k_type)
     _sum_Kit = lambda k:sum_Kit(k, n, h, k_type)
 
-    AIC_mue = (1 / n) * sum([_eit(k).T * (1 / _est_var(k)) @ _eit(k) for k in range(n)]) + \
-        (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
+    AIC_meu_likelihood = (1 / n) * sum([_eit(k).T * (1 / _est_var(k)) @ _eit(k) for k in range(n)])
+    AIC_meu_panelty = (1 / n) * d * K0 * sum([1 / _sum_Kit(k) for k in range(n)])
 
-    AIC_var = (1/ n) * sum([np.log(abs(_est_var(k))) for k in range(n)]) + \
-              (K0 / n) * sum([pow(_eit(k).T * 1 / _est_var(k) @ _eit(k), 2) / _sum_Kit(k) for k in range(n)])
+    AIC_cov_likelihood = (1/ n) * sum([np.log(abs(_est_var(k))) for k in range(n)])
+    AIC_cov_panelty = (K0 / n) * sum([pow(_eit(k).T * 1 / _est_var(k) @ _eit(k), 2) / _sum_Kit(k) for k in range(n)])
 
-    return AIC_mue, AIC_var
+    return AIC_meu_likelihood, AIC_meu_panelty, AIC_cov_likelihood, AIC_cov_panelty
 
 
 def mean_var_cl_stat(y, mue, var, h, k_type='triangular'):
@@ -332,28 +332,31 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
         # d = np.load(op.join(fol, 'vector_mean_var{}_{}.npz'.format('_sim' if sim else '', k_type)))
         # means_est = d['means'] #, d['hs_tr'], d['hs_ms']
         means_est = None
-        mean_cl, cov_cl, cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr))),  np.zeros((len(hs_tr)))
+        mean_ll_cl, mean_pan_cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr)))
+        cov_ll_cl, cov_pan_cl = np.zeros((len(hs_tr))), np.zeros((len(hs_tr)))
 
         h_chunks = utils.chunks(list(enumerate(hs_tr)), len(hs_tr) / n_jobs)
         params = [(ys, means_est, h_chunk, k_type) for h_chunk in h_chunks]
         results = utils.run_parallel(_calc_vector_mean_and_cov_cl_parallel, params, n_jobs)
-        for chunk_mean_cl, chunk_cov_cl, chunk_cl in results:
-            for h_ind in chunk_mean_cl.keys():
-                mean_cl[h_ind] = chunk_mean_cl[h_ind]
-                cov_cl[h_ind] = chunk_cov_cl[h_ind]
-                cl[h_ind] = chunk_cl[h_ind]
-        np.savez(output_fname, mean_cl=mean_cl, cov_cl=cov_cl, cl=cl, hs_tr=hs_tr)
+        for chunk_mean_ll_cl, chunk_mean_pan_cl, chunk_cov_ll_cl, chunk_cov_pan_cl in results:
+            for h_ind in chunk_mean_ll_cl.keys():
+                mean_ll_cl[h_ind] = chunk_mean_ll_cl[h_ind]
+                mean_pan_cl[h_ind] = chunk_mean_pan_cl[h_ind]
+                cov_ll_cl[h_ind] = chunk_cov_ll_cl[h_ind]
+                cov_pan_cl[h_ind] = chunk_cov_pan_cl[h_ind]
+        np.savez(output_fname, mean_ll_cl=mean_ll_cl, mean_pan_cl=mean_pan_cl, cov_ll_cl=cov_ll_cl,
+                 cov_pan_cl=cov_pan_cl, hs_tr=hs_tr)
 
 
 def _calc_vector_mean_and_cov_cl_parallel(p):
     ys, means_est, h_chunk, k_type = p
-    mean_cl, cov_cl, cl = {}, {}, {}
+    mean_ll_cl, mean_pan_cl, cov_ll_cl, cov_pan_cl = {}, {}, {}, {}
     for h_ind, h_tr in h_chunk:
         print(h_ind)
         means_est_h_ind = None if means_est is None else means_est[h_ind]
-        mean_cl[h_ind], cov_cl[h_ind] = vector_mean_and_cov_cl_stat(ys, means_est_h_ind, h_tr, k_type)
-        cl[h_ind] = mean_cl[h_ind] + cov_cl[h_ind]
-    return mean_cl, cov_cl, cl
+        mean_ll_cl[h_ind], mean_pan_cl[h_ind], cov_ll_cl[h_ind], cov_pan_cl[h_ind] = \
+            vector_mean_and_cov_cl_stat(ys, means_est_h_ind, h_tr, k_type)
+    return mean_ll_cl, mean_pan_cl, cov_ll_cl, cov_pan_cl
 
 
 def calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type='triangular', sim=False, overwrite=False,
@@ -832,8 +835,8 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            # calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
-            plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type, sim)
+            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=n_jobs)
+            # plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type, sim)
 
 
 if __name__ == '__main__':
@@ -866,8 +869,8 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = False
-    sim = True
-    n_jobs = 1
+    sim = False
+    n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
@@ -883,11 +886,11 @@ if __name__ == '__main__':
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-    plot_vector_mean_cov_summary(root_fol, sim)
+    # plot_vector_mean_cov_summary(root_fol, sim)
 
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
