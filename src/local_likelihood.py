@@ -501,7 +501,10 @@ def plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', 
         return
     print('Loading {}'.format(input_fname))
     d = np.load(input_fname)
-    mean_cl, col_cl, cl, hs_tr = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_tr']
+    # mean_cl, col_cl, cl, hs_tr = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_tr']
+    mean_ll_cl, mean_pan_cl, cov_ll_cl, cov_pan_cl, hs_tr = d['mean_ll_cl'], d['mean_pan_cl'], d['cov_ll_cl'],\
+                                                            d['cov_pan_cl'], d['hs_tr']
+    cl = mean_ll_cl + 1 * mean_pan_cl + cov_ll_cl + 1 * cov_pan_cl
     # for cl, cl_name in zip([mean_cl, col_cl, cl], ['AIC mean', 'AIC cov', 'AIC']):
     for cl, cl_name in zip([cl], ['AIC']):
         if not subplot:
@@ -792,7 +795,7 @@ def plot_vector_mean_cov_summary(root_fol, sim=False):
                     ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
             else:
                 ax.set_ylim([10, 20])
-            ax.set_xlim([0, 200])
+            # ax.set_xlim([0, 200])
         utils.maximize_figure(plt)
         plt.tight_layout()
         output_fname = op.join(figures_fol, '{}{}_vector_mean_cov_summary.jpg'.format(
@@ -869,7 +872,7 @@ if __name__ == '__main__':
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
     overwrite = True
-    sim = True
+    sim = False
     n_jobs = 0
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
@@ -886,11 +889,11 @@ if __name__ == '__main__':
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-    # plot_vector_mean_cov_summary(root_fol, sim)
+    plot_vector_mean_cov_summary(root_fol, sim)
 
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
