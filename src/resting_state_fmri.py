@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 import scipy.signal
 import scipy.io as sio
 import shutil
-import glob
+from itertools import product
+import re
+from functools import partial
 from src import freesurfer_utils as fu
 from src import utils
 
@@ -19,23 +21,26 @@ if FREE_SURFER_HOME == '':
 
 def convert_fmri_file(volume_fname_template, from_format, to_format):
     output_fname = volume_fname_template.format(format=to_format)
-    if not op.isfile(output_fname):
-        utils.run_script('mri_convert {} {}'.format(volume_fname_template.format(format=from_format), output_fname))
-    return output_fname
+    intput_fname = volume_fname_template.format(format=from_format)
+    if not op.isfile(output_fname) and op.isfile(intput_fname):
+        utils.run_script('mri_convert {} {}'.format(intput_fname, output_fname))
+    return output_fname if op.isfile(output_fname) else ''
 
 
-def morph_labels_to_all_vertices(subject, atlas, subjects_dir, hemi, n_jobs=1, local_subjects_dir=''):
+def read_annotation_labels(subject, atlas, subjects_dir, hemi, morph=False, n_jobs=1, local_subjects_dir=''):
     morphed_labels_fol = op.join(subjects_dir, subject, 'label') if local_subjects_dir == '' else \
         op.join(local_subjects_dir, subject, 'label')
-    morphed_labels_fname = op.join(morphed_labels_fol, '{}.{}_all_vertices.pkl'.format(hemi, atlas))
-    if not op.isfile(morphed_labels_fname):
+    labels_fname = op.join(morphed_labels_fol, '{}.{}.pkl'.format(hemi, atlas))
+    if not op.isfile(labels_fname):
         labels = mne.read_labels_from_annot(subject, atlas, subjects_dir=subjects_dir, hemi=hemi)
-        morphed_labels = []
-        for label in labels:
-            label.values.fill(1.0)
-            morphed_label = label.morph(subject, subject, 5, None, subjects_dir, n_jobs)
-            morphed_labels.append(morphed_label)
-        utils.save(morphed_labels, morphed_labels_fname)
+        if morph:
+            morphed_labels = []
+            for label in labels:
+                label.values.fill(1.0)
+                morphed_label = label.morph(subject, subject, 5, None, subjects_dir, n_jobs)
+                morphed_labels.append(morphed_label)
+            labels = morphed_labels
+        utils.save(labels, labels_fname)
 
 
 def load_first_vertice(fmri_fname):
@@ -46,17 +51,18 @@ def load_first_vertice(fmri_fname):
     plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.jpg'))
 
 
-
-def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, measure='PCA', do_plot=False, local_subjects_dir=''):
-    output_fname = op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(aparc_name, measure))
+def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, measure='PCA', do_plot=False,
+            do_plot_all_vertices=False, local_subjects_dir='', excludes = ('corpuscallosum', 'unknown')):
+    output_fname = op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}_{}.npz'.format(atlas, measure, hemi))
     if op.isfile(output_fname):
+        print('{} already exist'.format(output_fname))
         return
     x = nib.load(fmri_fname).get_data()
     print(x.shape)
     morphed_labels_fol = op.join(subjects_dir, subject, 'label') if local_subjects_dir == '' else \
         op.join(local_subjects_dir, subject, 'label')
-    morphed_labels_fname = op.join(morphed_labels_fol, '{}.{}_all_vertices.pkl'.format(hemi, atlas))
-    labels = utils.load(morphed_labels_fname)
+    labels_fname = op.join(morphed_labels_fol, '{}.{}.pkl'.format(hemi, atlas))
+    labels = utils.load(labels_fname)
     print(max([max(label.vertices) for label in labels]))
     if measure != 'coef_of_variation_across_time':
         labels_data = np.zeros((len(labels), x.shape[-1]))
@@ -64,6 +70,9 @@ def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, m
         labels_data = np.zeros((len(labels)))
     labels_names = []
     utils.make_dir(op.join(utils.get_fol_name(fmri_fname), 'figures'))
+
+    _label_is_excluded = partial(utils.label_is_excluded, compiled_excludes=re.compile('|'.join(excludes)))
+    labels = [l for l in labels if not _label_is_excluded(l.name)]
     for ind, label in enumerate(labels):
         if measure == 'mean':
             labels_data[ind, :] = np.mean(x[label.vertices, 0, 0, :], 0)
@@ -85,11 +94,19 @@ def calc_measure_across_labels(fmri_fname, subject, atlas, hemi, subjects_dir, m
             label_std = np.std(x[label.vertices, 0, 0, :], 1)
             labels_data[ind] = np.mean(label_std) / np.mean(label_mean)
         labels_names.append(label.name)
-        if do_plot:
+        if do_plot_all_vertices:
+            utils.make_dir(op.join(utils.get_fol_name(fmri_fname), 'figures', 'all_vertices'))
             plt.figure()
             plt.plot(x[label.vertices, 0, 0, :].T)
-            plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'figures', '{}.jpg'.format(label.name)))
+            plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'figures', 'all_vertices', '{}.jpg'.format(label.name)))
             plt.close()
+        if do_plot:
+            utils.make_dir(op.join(utils.get_fol_name(fmri_fname), 'figures', measure))
+            plt.figure()
+            plt.plot(labels_data[ind, :])
+            plt.savefig(op.join(utils.get_fol_name(fmri_fname), 'figures', measure, '{}_{}.jpg'.format(measure, label.name)))
+            plt.close()
+
     np.savez(output_fname, data=labels_data, names=labels_names)
 
 
@@ -180,23 +197,49 @@ if __name__ == '__main__':
     fsaverage = 'fsaverage'
     # sms = '3mm_SMS1_pa'
     # run = '006'
-    root_fol = utils.existing_fol(
-        ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
-    hemi = 'lh'
-    local_subjects_dir = os.environ['SUBJECTS_DIR']
+    # root_fol = utils.existing_fol(
+    #     ['/home/noam/vic', '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func', '/homes/5/npeled/space1/vic'])
+    # root_fol = '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
 
-    subjects_dir = '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/subjects'
-    aparc_name = 'aparc' # 'laus250'
-    volume_fname_template = 'fmcpr.sm5.{}.{}.{}'.format(fsaverage, hemi, '{format}')
-    measure = 'PCA'
+    # local_subjects_dir = os.environ['SUBJECTS_DIR']
+    local_subjects_dir = '/homes/5/npeled/space1/subjects'
 
-    for fol, subject, sms, run in utils.sms_generator(root_fol):
-        if subject != 'nmr00960':
-            continue
-        image_name = convert_fmri_file(op.join(fol, volume_fname_template), 'nii.gz', 'mgz')
-        tr = get_tr(image_name)
-        # morph_labels_to_all_vertices(fsaverage, aparc_name, subjects_dir, hemi, n_jobs, local_subjects_dir=local_subjects_dir)
-        # calc_measure_across_labels(image_name, fsaverage, aparc_name, hemi, subjects_dir, measure, local_subjects_dir=local_subjects_dir)
-        # plot_fmri_time_series(image_name, aparc_name, measure)
-        # calc_cov_and_power_spectrum(fol, aparc_name, tr, measure)
-        calc_simulated_labels(fol, root_fol, aparc_name, tr, measure)
+    # subjects_dir = '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/subjects'
+
+    morph = False
+    nmr = True
+    if nmr:
+        root_fol = '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
+        subjects_dir = '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/subjects'
+        hemi = 'lh'
+        # aparc_name = 'aparc'
+        aparc_name = 'laus125'
+        measure = 'mean'
+        fmri_fname_template = 'fmcpr.sm5.{}.{}.{}'.format(fsaverage, hemi, '{format}')
+        for (fol, subject, sms, run) in utils.sms_generator(root_fol):
+            image_name = convert_fmri_file(op.join(fol, fmri_fname_template), 'nii.gz', 'mgz')
+            tr = get_tr(image_name)
+            read_annotation_labels(fsaverage, aparc_name, subjects_dir, hemi, morph, n_jobs,
+                                   local_subjects_dir=local_subjects_dir)
+            calc_measure_across_labels(image_name, fsaverage, aparc_name, hemi, subjects_dir, measure,
+                                       local_subjects_dir=local_subjects_dir, do_plot=False)
+            # plot_fmri_time_series(image_name, aparc_name, measure)
+            # calc_cov_and_power_spectrum(fol, aparc_name, tr, measure)
+            # calc_simulated_labels(fol, root_fol, aparc_name, tr, measure)
+    else:
+        root_fol = '/homes/5/npeled/space1/fMRI'
+        subjects_dir = '/homes/5/npeled/space1/subjects'
+        hemis = ['lh', 'rh']
+        aparc_name = 'laus125'
+        measure = 'mean'
+        subjects = utils.get_subjects(root_fol)
+        for subject_fol, hemi in product(subjects, hemis):
+            subject = utils.namebase(subject_fol)
+            fmri_fname_template = '{}.siemens.sm6.fsaverage.{}.b0dc.{}'.format(subject, hemi, '{format}')
+            image_name = convert_fmri_file(op.join(subject_fol, fmri_fname_template), 'nii.gz', 'mgz')
+            if image_name != '':
+                tr = get_tr(image_name)
+                read_annotation_labels(fsaverage, aparc_name, subjects_dir, hemi, morph, n_jobs,
+                                       local_subjects_dir=local_subjects_dir)
+                calc_measure_across_labels(image_name, fsaverage, aparc_name, hemi, subjects_dir, measure,
+                                           local_subjects_dir=local_subjects_dir, do_plot=True)

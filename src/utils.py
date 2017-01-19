@@ -133,13 +133,13 @@ def get_n_jobs(n_jobs):
     return n_jobs
 
 
-def get_subjects(root_fol):
-    return glob.glob(op.join(root_fol, 'nmr*'))
+def get_subjects(root_fol, subjects_prefix=''):
+    return glob.glob(op.join(root_fol, '{}*'.format(subjects_prefix)))
 
 
-def sms_generator(root_fol, subjects=(), runs_dic=None):
+def sms_generator(root_fol, subjects=(), runs_dic=None, subjects_prefix='nmr'):
     if len(subjects) == 0:
-        subjects = get_subjects(root_fol)
+        subjects = get_subjects(root_fol, subjects_prefix)
     for subject_fol in subjects:
         smss = sorted(glob.glob(op.join(subject_fol, '3mm_SMS*')))
         # smss = ['3mm_SMS1_pa', '3mm_SMS4_ipat1_pa', '3mm_SMS4_ipat2_pa', '3mm_SMS8_pa']
@@ -303,3 +303,7 @@ def combine_nine_images(figs, new_image_fname, dpi=100, facecolor='white'):
     plt.savefig(new_image_fname, facecolor=fig.get_facecolor(), transparent=True, bbox_inches='tight')
     plt.close()
     return new_image_fname
+
+
+def label_is_excluded(label_name, compiled_excludes):
+    return not compiled_excludes.search(label_name) is None

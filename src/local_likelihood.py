@@ -3,8 +3,10 @@ import numpy as np
 import shutil
 import matplotlib.pyplot as plt
 import itertools
+from itertools import product
 from src import utils
 import time
+
 
 def init_figures():
     from matplotlib import rcParams
@@ -122,6 +124,7 @@ def sum_Kit(t, n, h, k_type='triangular'):
     return sum([K(j, t, h, k_type) for j in range(n)])
 
 
+# The actual function
 def vector_mean_and_cov_cl_stat(ys, mues, h, k_type='triangular'):
     n = ys.shape[1]
     d = ys.shape[0]
@@ -322,8 +325,8 @@ def _calc_vector_mean_cl_parallel(p):
     return mean_cl
 
 
-def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, overwrite=False, n_jobs=1):
-    output_fname = op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type))
+def calc_vector_mean_cov_cl(ys, fol, hs_tr, measure, atlas, k_type='triangular', sim=False, overwrite=False, n_jobs=1):
+    output_fname = op.join(fol, 'vector_mean_cov_cl{}_{}_{}_{}.npz'.format('_sim' if sim else '', k_type, measure, atlas))
     if op.isfile(output_fname) and not overwrite:
         d = np.load(output_fname)
         if np.any(np.array(d['hs_tr']) != np.array(hs_tr)):
@@ -344,6 +347,7 @@ def calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type='triangular', sim=False, over
                 mean_pan_cl[h_ind] = chunk_mean_pan_cl[h_ind]
                 cov_ll_cl[h_ind] = chunk_cov_ll_cl[h_ind]
                 cov_pan_cl[h_ind] = chunk_cov_pan_cl[h_ind]
+        print('Saving results in {}'.format(output_fname))
         np.savez(output_fname, mean_ll_cl=mean_ll_cl, mean_pan_cl=mean_pan_cl, cov_ll_cl=cov_ll_cl,
                  cov_pan_cl=cov_pan_cl, hs_tr=hs_tr)
 
@@ -361,7 +365,6 @@ def _calc_vector_mean_and_cov_cl_parallel(p):
 
 def calc_mean_var_cl(ys, fol, hs_tr, hs_s, labels_names, k_type='triangular', sim=False, overwrite=False,
                      specific_label='', n_jobs=1):
-    from itertools import product
     output_fname = op.join(fol, 'mean_var{}_cl_{}_{}-{}.npz'.format('_sim' if sim else '', k_type, hs_s[0], hs_s[-1]))
     if op.isfile(output_fname) and not overwrite:
         d = np.load(output_fname)
@@ -493,13 +496,13 @@ def plot_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, k_type='tri
             plt.close()
 
 
-def plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=False, subplot=False, ax=None,
-                         write_x_label=True):
-    input_fname = op.join(fol, 'vector_mean_cov_cl{}_{}.npz'.format('_sim' if sim else '', k_type))
+def plot_vector_mean_cov(fol, root_fol, subject, sms, run, measure, atlas, k_type='triangular', sim=False,
+                         subplot=False, ax=None, write_x_label=True):
+    input_fname = op.join(fol, 'vector_mean_cov_cl{}_{}_{}_{}.npz'.format('_sim' if sim else '', k_type, measure, atlas))
     if not op.isfile(input_fname):
         print("Can't find {}!".format(input_fname))
         return
-    print('Loading {}'.format(input_fname))
+    # print('Loading {}'.format(input_fname))
     d = np.load(input_fname)
     # mean_cl, col_cl, cl, hs_tr = d['mean_cl'], d['cov_cl'], d['cl'], d['hs_tr']
     mean_ll_cl, mean_pan_cl, cov_ll_cl, cov_pan_cl, hs_tr = d['mean_ll_cl'], d['mean_pan_cl'], d['cov_ll_cl'],\
@@ -523,8 +526,8 @@ def plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', 
         if subplot:
             ax.set_title('{} {}'.format(sms.replace('_', ' '), '({}s)'.format(cl_argmin) if cl_min_exist else '(no AIC min)'))
         if not subplot:
-            title = '{} {} {}{} {}'.format(
-                cl_name, sms, run, ' sim' if sim else '',
+            title = '{} {} {} {} {} {}{} {}'.format(
+                subject, measure, atlas, cl_name, sms, run, ' sim' if sim else '',
                 'best window length: {}s'.format(cl_argmin) if cl_min_exist else '(no AIC min)')
             print(title)
             plt.title(title)
@@ -776,16 +779,19 @@ def combine_mean_var_cl_sim_plots(root_fol, subject, labels_names, hs):
             utils.combine_nine_images(figs, op.join(figure_fol, '{}.png'.format(label)))
 
 
-def plot_vector_mean_cov_summary(root_fol, sim=False):
+def plot_vector_mean_cov_summary(root_fol, measure, atlas, sim=False):
     subjects = utils.get_subjects(root_fol)
     figures_fol = op.join(root_fol, 'figures')
-    runs = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '016', '3mm_SMS4_ipat2_pa': '012', '3mm_SMS8_pa': '004'}
+    runs = dict(nmr00956 = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '016', '3mm_SMS4_ipat2_pa': '012', '3mm_SMS8_pa': '004'},
+                nmr00952 = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '012', '3mm_SMS4_ipat2_pa': '005', '3mm_SMS8_pa': '004'},
+                nmr00954_scan2 = {'3mm_SMS1_pa': '009', '3mm_SMS4_ipat1_pa': '013', '3mm_SMS4_ipat2_pa': '017', '3mm_SMS8_pa': '014'},
+                nmr00960 = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '016', '3mm_SMS4_ipat2_pa': '005', '3mm_SMS8_pa': '004'})
     ylims = {'3mm_SMS1_pa': [10, 20], '3mm_SMS4_ipat1_pa': [10, 20], '3mm_SMS4_ipat2_pa': [10, 14], '3mm_SMS8_pa': [10, 14]}
     for subject in subjects:
         fig, axes = plt.subplots(2, 2, sharex='col', sharey='row', figsize=(12, 8))
         axs = list(itertools.chain(*axes))
-        for ind, ((fol, _, sms, run), ax) in enumerate(zip(utils.sms_generator(root_fol, [subject], runs), axs)):
-            plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type='triangular', sim=sim, subplot=True, ax=ax,
+        for ind, ((fol, _, sms, run), ax) in enumerate(zip(utils.sms_generator(root_fol, [subject], runs[utils.namebase(subject)]), axs)):
+            plot_vector_mean_cov(fol, root_fol, subject, sms, run, measure, atlas, k_type='triangular', sim=sim, subplot=True, ax=ax,
                                  write_x_label=ind > 1)
             if not sim:
                 ax.set_ylim(ylims[sms])
@@ -811,7 +817,9 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
         y = np.load(op.join(utils.get_fol_name(fmri_fname), 'first_vertice.npy'))
     else:
         if not sim:
-            d = np.load(op.join(utils.get_fol_name(fmri_fname), 'labels_data_{}_{}.npz'.format(atlas, measure)))
+            labes_fname = op.join(utils.get_fol_name(fmri_fname),
+                                   'labels_data_{}_{}_{}.npz'.format(atlas, measure, hemi))
+            d = np.load(labes_fname)
             ys = d['data']
         else:
             import scipy.io as sio
@@ -838,8 +846,8 @@ def main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs_s, k_types=
 
             # est_vector_mean_and_var(ys, labels_names, hs_tr, hs_s, fol, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
             # calc_vector_mean_cl(ys, fol, hs_tr, k_type, sim, overwrite=False, n_jobs=1)
-            calc_vector_mean_cov_cl(ys, fol, hs_tr, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
-            # plot_vector_mean_cov(fol, root_fol, subject, sms, run, k_type, sim)
+            # calc_vector_mean_cov_cl(ys, fol, hs_tr, measure, atlas, k_type, sim, overwrite=overwrite, n_jobs=n_jobs)
+            plot_vector_mean_cov(fol, root_fol, subject, sms, run, measure, atlas, k_type, sim)
 
 
 if __name__ == '__main__':
@@ -850,16 +858,19 @@ if __name__ == '__main__':
         ['/home/noam/vic',
          '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\', '/home/npeled/vic/'])
     # root_fol = '/homes/5/npeled/space1/vic'
+    root_fol = '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
     hemi = 'lh'
-    atlas = 'aparc' # 'laus250'
-    measure = 'PCA'
+    atlas = 'laus125' # 'aparc' # 'laus250'
+    measure = 'mean' # 'PCA'
+
     # hs_plot = [8,  13,  18, 23]
     # hs_plot = [4, 6, 12, 22]
     hs = range(1, 59)
     hs_to_compare = (1, 59) # (1, 450)
     top_hs = 59
 
-    hs = range(1, 450)
+    # hs = range(1, 450)
+    hs = range(1, 120)
     hs_to_compare = (1, 450) # (1, 450)
     top_hs = 120
 
@@ -871,9 +882,9 @@ if __name__ == '__main__':
     # labels_names = ['posteriorcingulate-lh']
     # figures_fol = op.join(root_fol, 'figures', 'smss_per_label_window')
     # utils.make_dir(figures_fol)
-    overwrite = True
+    overwrite = False
     sim = False
-    n_jobs = 0
+    n_jobs = -1
     n_jobs = utils.get_n_jobs(n_jobs)
     specific_label = 'posteriorcingulate-lh'
     labels_names = utils.load(op.join(root_fol, 'labels_names.pkl'))
@@ -883,17 +894,18 @@ if __name__ == '__main__':
     # for sim in [False, True]:
     subjects = set()
     for fol, subject, sms, run in utils.sms_generator(root_fol):
-        if subject != 'nmr00956':
-            continue
+        # if subject == 'nmr00956':
+        #     continue
         subjects.add(subject)
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-    plot_vector_mean_cov_summary(root_fol, sim)
+    # plot_vector_mean_cov_summary(root_fol, measure, atlas, sim)
 
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
