@@ -514,15 +514,16 @@ def plot_vector_mean_cov(fol, root_fol, subject, sms, run, measure, atlas, k_typ
             fig = plt.figure()
             ax = plt.subplot()
         ind = np.arange(len(hs_tr))
-        ax.scatter(ind, cl, s=1, facecolors='none')
+        ax.scatter(ind, cl, marker='o', s=1, facecolors='none')
         if write_x_label:
             ax.set_xlabel('window-width (s)')
         # plt.text(cl.argmin(), cl.min() * 0.97 + .03 * cl.max(), '*', fontsize=14)
-        cl_argmin, cl_min = cl.argmin(), cl.min()
+        cl_argmin, cl_min = np.nanargmin(cl), np.nanmin(cl)
         cl_min_exist = 0 < cl_argmin < len(cl) - 1
         if cl_min_exist:
             ax.scatter(cl_argmin, cl_min, marker='o', s=30)
         ax.set_xlim([-0.5, len(cl) + 0.5])
+        ax.plot(ind, cl, '--')
         if subplot:
             ax.set_title('{} {}'.format(sms.replace('_', ' '), '({}s)'.format(cl_argmin) if cl_min_exist else '(no AIC min)'))
         if not subplot:
@@ -552,7 +553,9 @@ def copy_figures(subject, sms, run, fol, root_fol, label_name, k_type='triangula
 def compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types=['triangular']):
 
     for k_type in k_types:
-        d = np.load(op.join(fol, 'vector_mean_cl_{}_{}-{}.npz'.format(k_type, )))
+        # d = np.load(op.join(fol, 'vector_mean_cl_{}_{}-{}.npz'.format(k_type)))
+        d = np.load(op.join(fol, 'vector_mean_cl_{}_{}-{}.npz'.format(k_type)))
+        # vector_mean_cov_cl_triangular_mean_laus125
         cl, hs_ms = d['mean_cl'], d['hs_ms']
         d = np.load(op.join(fol, 'vector_mean_cl_sim_{}_{}-{}.npz'.format(k_type)))
         cl_sim, hs_ms_sim = d['mean_cl'], d['hs_ms']
@@ -780,7 +783,7 @@ def combine_mean_var_cl_sim_plots(root_fol, subject, labels_names, hs):
 
 
 def plot_vector_mean_cov_summary(root_fol, measure, atlas, sim=False):
-    subjects = utils.get_subjects(root_fol)
+    subjects = utils.get_subjects(root_fol, 'nmr')
     figures_fol = op.join(root_fol, 'figures')
     runs = dict(nmr00956 = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '016', '3mm_SMS4_ipat2_pa': '012', '3mm_SMS8_pa': '004'},
                 nmr00952 = {'3mm_SMS1_pa': '006', '3mm_SMS4_ipat1_pa': '012', '3mm_SMS4_ipat2_pa': '005', '3mm_SMS8_pa': '004'},
@@ -793,14 +796,14 @@ def plot_vector_mean_cov_summary(root_fol, measure, atlas, sim=False):
         for ind, ((fol, _, sms, run), ax) in enumerate(zip(utils.sms_generator(root_fol, [subject], runs[utils.namebase(subject)]), axs)):
             plot_vector_mean_cov(fol, root_fol, subject, sms, run, measure, atlas, k_type='triangular', sim=sim, subplot=True, ax=ax,
                                  write_x_label=ind > 1)
-            if not sim:
-                ax.set_ylim(ylims[sms])
-                if ind < 2:
-                    ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 2))
-                else:
-                    ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
-            else:
-                ax.set_ylim([10, 20])
+            # if not sim:
+            #     ax.set_ylim(ylims[sms])
+            #     if ind < 2:
+            #         ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 2))
+            #     else:
+            #         ax.yaxis.set_ticks(np.arange(ylims[sms][0], ylims[sms][1] + 1, 1))
+            # else:
+            #     ax.set_ylim([10, 20])
             # ax.set_xlim([0, 200])
         utils.maximize_figure(plt)
         plt.tight_layout()
@@ -858,7 +861,7 @@ if __name__ == '__main__':
         ['/home/noam/vic',
          '/homes/5/npeled/space1/vic', 'N:\\noam\\vic\\', '/home/npeled/vic/'])
     # root_fol = '/homes/5/npeled/space1/vic'
-    root_fol = '/space/violet/1/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
+    root_fol = '/cluster/neuromind/dwakeman/sequence_analysis/sms_study_bay8/raw/func'
     hemi = 'lh'
     atlas = 'laus125' # 'aparc' # 'laus250'
     measure = 'mean' # 'PCA'
@@ -894,18 +897,18 @@ if __name__ == '__main__':
     # for sim in [False, True]:
     subjects = set()
     for fol, subject, sms, run in utils.sms_generator(root_fol):
-        # if subject == 'nmr00956':
-        #     continue
+        if subject == 'nmr00956':
+            continue
         subjects.add(subject)
         fmri_fname = op.join(fol, 'fmcpr.sm5.{}.{}.mgz'.format(fsaverage, hemi))
         tr = utils.load(op.join(fol, 'tr.pkl'))
         print(subject, sms, run, tr)
-        main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
-             labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
+        # main(subject, sms, run, fmri_fname, fol, root_fol, atlas, tr, hs, k_types, measure, sim, labels_names,
+        #      labels_ids, only_one_trace, overwrite, specific_label, n_jobs=n_jobs)
 
         # compare_vector_mean_var_cl(subject, sms, run, fol, root_fol, k_types)
 
-    # plot_vector_mean_cov_summary(root_fol, measure, atlas, sim)
+    plot_vector_mean_cov_summary(root_fol, measure, atlas, sim)
 
 
     label = 'posteriorcingulate-lh' # 'fusiform-lh'
@@ -913,7 +916,7 @@ if __name__ == '__main__':
     labels_names = [label]
     init_figures()
     for fol, subject, sms, run in utils.sms_generator(root_fol):
-        if subject != 'nmr00956':
+        if subject == 'nmr00956':
             continue
         # merge_mean_var_cl_files(fol, hs_to_compare, k_types[0])
         # compare_mean_var_cl(fol, root_fol, subject, sms, run, labels_names, hs_to_compare, top_hs, labels_ids,
